@@ -47,7 +47,6 @@ Carrossel seg, qua e sex às 18:30, cada um num pilar em rodízio (os que perfor
 - **Cuidados e manutenção**: trilho, roldana, vedação, limpeza.
 - **Frase com foto de obra**: frase curta em cima de uma foto sua de `content/fotos`,
   assinada "Guide Vidro e Alumínio".
-- **Para serralheiros e vidraceiros**: fabricação sem instalação (peso menor).
 
 Todo post fecha com a chamada nas duas opções: **WhatsApp (11) 97473-9209 ou ORÇAMENTO no
 Direct**. Sem travessão, sem preço, sem prazo, sem porcentagem, sem garantia, sem link, sem

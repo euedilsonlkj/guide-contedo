@@ -11,7 +11,7 @@
   "reelTime": "12:00",
   "planDaysAhead": 7,
   "voice": "Perfil da Guide Vidro e Alumínio, fábrica de esquadrias de alumínio em Caieiras, SP. Fala em nome da empresa (nós, a Guide), como quem fabrica e instala esquadria todo dia e explica sem enrolação, em português simples, sem termo técnico sem explicar, sem tom de vendedor chato e sem tom de guru.",
-  "audience": "Quem está construindo ou reformando na Grande São Paulo (donos de casa, arquitetos, engenheiros, construtoras e mestres de obra) e precisa escolher, medir e comprar esquadria de alumínio e guarda-corpo. Também serralheiros e vidraceiros que compram esquadria fabricada sem instalação.",
+  "audience": "Quem está construindo ou reformando na Grande São Paulo (donos de casa, arquitetos, engenheiros, construtoras e mestres de obra) e precisa escolher, medir e comprar esquadria de alumínio e guarda-corpo.",
   "callToAction": "Pedir o orçamento da obra pelo WhatsApp (11) 97473-9209 ou mandando a palavra ORÇAMENTO no Direct. Dizer sempre o que a pessoa recebe (o orçamento da obra com a linha certa para cada vão) e dar as duas opções, WhatsApp ou Direct. Nunca mandar para o site.",
   "rules": [
     "Falar sempre em nome da Guide, nunca em nome de uma pessoa",
@@ -24,7 +24,6 @@
   ],
   "facts": [
     "A Guide Vidro e Alumínio é uma fábrica de esquadrias de alumínio em Caieiras, SP, que fabrica e instala",
-    "A Guide também fabrica esquadria sem instalação para serralheiros e vidraceiros",
     "A Guide fabrica portas de correr, portas de abrir, portas pivotantes, janelas de correr, maxi-ar e fixo, e persiana integrada automatizada",
     "A Guide trabalha com as linhas Suprema, Suprema Larga e Gold, que se diferenciam pela altura de abertura e pela resistência à pressão do vento",
     "A Guide fabrica guarda-corpos em quatro sistemas: na torre, T&M, CG e no prolongador",
@@ -136,15 +135,6 @@
       ],
       "usesOwnerPhoto": true,
       "weight": 1
-    },
-    {
-      "key": "parceiros",
-      "name": "Para serralheiros e vidraceiros",
-      "description": "Conteúdo para quem compra esquadria fabricada sem instalação: como passar a medida certa para a fábrica, vantagens de terceirizar a fabricação, como apresentar a esquadria para o cliente final.",
-      "kinds": [
-        "carousel"
-      ],
-      "weight": 0.7
     },
     {
       "key": "bastidores",
