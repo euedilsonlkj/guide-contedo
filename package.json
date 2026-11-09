@@ -1,0 +1,42 @@
+{
+  "name": "guide-conteudo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Conteudo do Instagram da Guide no automatico: planeja a semana, escreve, pede imagem e video ao Gemini, desenha e publica.",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.34.7",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "ffmpeg-static"
+    ]
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.19.2",
+    "drizzle-kit": "0.31.11",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@fontsource-variable/montserrat": "5.3.0",
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.4",
+    "ffmpeg-static": "5.3.0",
+    "openai": "7.36.0",
+    "playwright-core": "1.64.1",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  }
+}

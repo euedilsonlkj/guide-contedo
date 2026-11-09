@@ -1,0 +1,1 @@
+ALTER TABLE `content_posts` ADD `hook_type` text;

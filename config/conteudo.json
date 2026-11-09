@@ -1,0 +1,235 @@
+{
+  "enabled": true,
+  "account": "guide",
+  "carouselDays": [
+    1,
+    3,
+    5
+  ],
+  "carouselTime": "18:30",
+  "reelDays": [],
+  "reelTime": "12:00",
+  "planDaysAhead": 7,
+  "voice": "Perfil da Guide Vidro e Alumínio, fábrica de esquadrias de alumínio em Caieiras, SP. Fala em nome da empresa (nós, a Guide), como quem fabrica e instala esquadria todo dia e explica sem enrolação, em português simples, sem termo técnico sem explicar, sem tom de vendedor chato e sem tom de guru.",
+  "audience": "Quem está construindo ou reformando na Grande São Paulo (donos de casa, arquitetos, engenheiros, construtoras e mestres de obra) e precisa escolher, medir e comprar esquadria de alumínio e guarda-corpo. Também serralheiros e vidraceiros que compram esquadria fabricada sem instalação.",
+  "callToAction": "Pedir o orçamento da obra pelo WhatsApp (11) 97473-9209 ou mandando a palavra ORÇAMENTO no Direct. Dizer sempre o que a pessoa recebe (o orçamento da obra com a linha certa para cada vão) e dar as duas opções, WhatsApp ou Direct. Nunca mandar para o site.",
+  "rules": [
+    "Falar sempre em nome da Guide, nunca em nome de uma pessoa",
+    "Usar o vocabulário de obra e esquadria explicado de forma simples: vão, contramarco, folha de correr, maxi-ar, pivotante, perfil, linha, anodizado, pintura, vedação, medição",
+    "Nunca citar preço, desconto, condição de pagamento, porcentagem ou garantia",
+    "Nunca prometer prazo de fabricação, de entrega ou de instalação",
+    "Nunca usar travessão; usar vírgula ou ponto",
+    "Nunca inventar cliente, obra, depoimento, número ou caso; obra só como exemplo genérico",
+    "Nunca falar mal de concorrente pelo nome"
+  ],
+  "facts": [
+    "A Guide Vidro e Alumínio é uma fábrica de esquadrias de alumínio em Caieiras, SP, que fabrica e instala",
+    "A Guide também fabrica esquadria sem instalação para serralheiros e vidraceiros",
+    "A Guide fabrica portas de correr, portas de abrir, portas pivotantes, janelas de correr, maxi-ar e fixo, e persiana integrada automatizada",
+    "A Guide trabalha com as linhas Suprema, Suprema Larga e Gold, que se diferenciam pela altura de abertura e pela resistência à pressão do vento",
+    "A Guide fabrica guarda-corpos em quatro sistemas: na torre, T&M, CG e no prolongador",
+    "A Guide também faz jateamento de vidro"
+  ],
+  "forbiddenTerms": [
+    {
+      "pattern": "\\bvexa\\b|\\bcrm\\b",
+      "reason": "mentions Vexa or CRM; this is the account of the Guide factory, it talks about windows and doors, not about sales software"
+    }
+  ],
+  "quoteSignature": "Guide Vidro e Alumínio",
+  "hookTypes": [
+    {
+      "key": "dor",
+      "name": "Dor comum",
+      "pattern": "Aposto que você...",
+      "use": "Aponta um erro comum na compra ou na obra (deixar a esquadria para o fim, medir errado, escolher a linha pelo preço) que a pessoa comete sem perceber.",
+      "weight": 1
+    },
+    {
+      "key": "segredo",
+      "name": "Curiosidade / segredo",
+      "pattern": "Se ninguém te falou isso...",
+      "use": "Uma verdade de fábrica que quem está construindo não sabe: por que a janela entorta, por que vaza, por que a porta grande precisa de outra linha.",
+      "weight": 1
+    },
+    {
+      "key": "tutorial",
+      "name": "Promessa / tutorial",
+      "pattern": "Hoje eu vou te ensinar...",
+      "use": "Vai direto ao ponto e ensina algo prático: medir o vão, escolher entre correr e abrir, cuidar do trilho.",
+      "weight": 1.5
+    },
+    {
+      "key": "storytelling",
+      "name": "Storytelling / expectativa",
+      "pattern": "Olha o que aconteceu nessa obra...",
+      "use": "Conta uma situação típica de obra (sem dizer que é cliente real), criando expectativa pelo final.",
+      "weight": 1
+    },
+    {
+      "key": "comparacao",
+      "name": "Comparação",
+      "pattern": "Qual é melhor, ... ou ...?",
+      "use": "Compara duas opções que a pessoa está em dúvida (correr ou abrir, Suprema ou Gold, guarda-corpo na torre ou no prolongador) e diz quando usar cada uma.",
+      "weight": 1.5
+    },
+    {
+      "key": "aposta",
+      "name": "Aposta / desafio",
+      "pattern": "Eu aposto que...",
+      "use": "Desafia o que a pessoa acha que sabe sobre esquadria, e entrega a resposta no fim. Nunca promessa falsa, número inventado ou garantia.",
+      "weight": 1
+    },
+    {
+      "key": "identificacao",
+      "name": "Identificação / posicionamento",
+      "pattern": "Obra bem feita começa...",
+      "use": "Valoriza a decisão certa de quem planeja bem a obra, posicionando quem faz assim como referência.",
+      "weight": 1
+    }
+  ],
+  "pillars": [
+    {
+      "key": "guia_compra",
+      "name": "Guia de compra de esquadria",
+      "description": "Tudo que quem está construindo precisa saber antes de comprar esquadria: quando pedir o orçamento, como funciona a medição do vão, contramarco, o que perguntar para a fábrica, como comparar orçamentos.",
+      "kinds": [
+        "carousel",
+        "reel"
+      ],
+      "weight": 1.5
+    },
+    {
+      "key": "produtos",
+      "name": "Produtos e linhas",
+      "description": "Explica um produto ou uma escolha de cada vez: porta de correr, de abrir, pivotante, janela de correr, maxi-ar e fixo, persiana integrada automatizada, as linhas Suprema, Suprema Larga e Gold, os sistemas de guarda-corpo. Onde usar e por quê, só com os fatos permitidos.",
+      "kinds": [
+        "carousel"
+      ],
+      "weight": 1.5
+    },
+    {
+      "key": "erros_obra",
+      "name": "Erros que estragam a esquadria",
+      "description": "Erros comuns de obra e de compra que fazem a esquadria vazar, emperrar, entortar ou ficar feia, e como evitar cada um.",
+      "kinds": [
+        "carousel",
+        "reel"
+      ],
+      "weight": 1
+    },
+    {
+      "key": "cuidados",
+      "name": "Cuidados e manutenção",
+      "description": "Como limpar, conservar e manter a esquadria e o guarda-corpo funcionando bem por muitos anos: trilho, roldana, vedação, limpeza do alumínio e do vidro.",
+      "kinds": [
+        "carousel"
+      ],
+      "weight": 1
+    },
+    {
+      "key": "frase_obra",
+      "name": "Frase com foto de obra",
+      "description": "Uma frase forte e curta sobre obra bem planejada, acabamento e esquadria, em cima de uma foto real de obra da Guide.",
+      "kinds": [
+        "carousel"
+      ],
+      "usesOwnerPhoto": true,
+      "weight": 1
+    },
+    {
+      "key": "parceiros",
+      "name": "Para serralheiros e vidraceiros",
+      "description": "Conteúdo para quem compra esquadria fabricada sem instalação: como passar a medida certa para a fábrica, vantagens de terceirizar a fabricação, como apresentar a esquadria para o cliente final.",
+      "kinds": [
+        "carousel"
+      ],
+      "weight": 0.7
+    },
+    {
+      "key": "bastidores",
+      "name": "Bastidores da fábrica e da obra",
+      "description": "Situações do dia a dia de uma obra e de uma fábrica de esquadria contadas com um personagem: medição, escolha da linha, imprevisto na obra, instalação. Problema, virada e resultado.",
+      "kinds": [
+        "reel"
+      ],
+      "weight": 1
+    }
+  ],
+  "brand": {
+    "background": "#0B0906",
+    "accent": "#FE7121",
+    "text": "#FFFFFF",
+    "muted": "#B9B4AE",
+    "handle": "@guidevidroealuminio",
+    "wordmark": "GUIDE",
+    "ctaBadge": "WhatsApp (11) 97473-9209"
+  },
+  "imageStyle": "Fotografia realista e cinematográfica de casas e obras no Brasil com esquadrias de alumínio: portas e janelas de correr grandes, portas pivotantes, guarda-corpo de vidro em varanda, perfis de alumínio na fábrica, medição de vão na obra. Arquitetura contemporânea, luz quente de fim de tarde, tons escuros com detalhes laranja, sem texto escrito, sem logotipos, sem marcas, sem rostos de pessoas reais conhecidas.",
+  "maxVideosPerDay": 3,
+  "maxImagesPerDay": 10,
+  "autoPublish": true,
+  "lateToleranceHours": 10,
+  "narration": {
+    "voice": "ash",
+    "model": "gpt-4o-mini-tts",
+    "style": "Português do Brasil, homem de uns 35 anos que trabalha com esquadria explicando para um amigo que está construindo: ritmo rápido, energia alta, claro e confiante, quase sem pausas, sem cara de locutor de rádio.",
+    "pricePerMinuteUsd": 0.015
+  },
+  "reelFormats": [
+    {
+      "key": "novela",
+      "name": "Novela (episódio da série)",
+      "description": "Um episódio curto da série da conta, com o mesmo personagem toda vez. Quem viu um quer ver o próximo, e quem chega agora entende sozinho.",
+      "structure": "Cena 1: abre no meio da ação da obra, com o que está em jogo hoje (e meia frase de recap se for continuação). Cena 2: dá errado ou complica, com um detalhe concreto de esquadria. Cena 3: a virada ou a lição do episódio, e termina num gancho que só se resolve no próximo episódio.",
+      "scenes": 3,
+      "episode": true,
+      "weight": 3
+    },
+    {
+      "key": "pov",
+      "name": "POV",
+      "description": "POV: você está construindo e... Uma situação que todo mundo que já fez obra viveu, contada com humor e identificação. O espectador se vê na cena e manda para quem está construindo.",
+      "structure": "Cena 1: a situação do POV, que todo mundo reconhece. Cena 2: a reação exagerada e verdadeira, com o detalhe que faz rir de nervoso. Cena 3: a virada curta (o que quem planeja bem faz) e a chamada para o orçamento.",
+      "scenes": 3,
+      "episode": false,
+      "weight": 1
+    },
+    {
+      "key": "errado",
+      "name": "Você está fazendo errado",
+      "description": "Mostra um jeito comum e errado de escolher, medir ou cuidar da esquadria, o que dá de problema e o jeito certo. Provoca e entrega.",
+      "structure": "Cena 1: o jeito errado, mostrado com o personagem fazendo. Cena 2: o que isso causa (vaza, emperra, não fecha, fica feio). Cena 3: o jeito certo, concreto, e a chamada para o orçamento.",
+      "scenes": 3,
+      "episode": false,
+      "weight": 1
+    },
+    {
+      "key": "dicas",
+      "name": "3 dicas em 30 segundos",
+      "description": "Promete um número pequeno de dicas práticas de obra e esquadria e entrega uma por cena, sem enrolação.",
+      "structure": "Cena 1: a promessa e a dica 1. Cena 2: a dica 2. Cena 3: a dica 3 e a chamada para o orçamento. Cada dica é uma ação concreta.",
+      "scenes": 3,
+      "episode": false,
+      "weight": 1
+    },
+    {
+      "key": "antes_depois",
+      "name": "Antes e depois",
+      "description": "O mesmo vão antes (buraco na parede, obra crua) e depois (esquadria instalada). O contraste prende e dá vontade de ter o depois.",
+      "structure": "Cena 1: o antes, com a obra crua. Cena 2: o depois, a esquadria no lugar. Cena 3: a escolha que fez a diferença e a chamada para o orçamento.",
+      "scenes": 3,
+      "episode": false,
+      "weight": 1
+    }
+  ],
+  "series": {
+    "name": "A obra da Camila",
+    "character": {
+      "name": "Camila",
+      "role": "está construindo a primeira casa dela e precisa escolher as esquadrias",
+      "look": "Brazilian woman around 34 years old, medium build, long dark wavy hair tied back, plain white t-shirt without any logo or text, jeans, at a house under construction in Brazil"
+    },
+    "premise": "A Camila está construindo a primeira casa dela na Grande São Paulo, com o Seu Zé (mestre de obras experiente, que acha que sabe tudo) e a Bia (arquiteta, exigente com acabamento). Ela quer uma sala com porta de correr grande e varanda com guarda-corpo de vidro, mas não entende nada de esquadria. A cada episódio ela bate num problema da obra (vão fora de esquadro, orçamento que não dá para comparar, porta pesada demais para a linha escolhida), erra, aprende e escolhe melhor."
+  }
+}

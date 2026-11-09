@@ -1,0 +1,14 @@
+# segredos
+.env
+.env.*
+!.env.example
+
+# dados deste computador
+data/
+/content/
+.chrome-profile-*/
+tunel-url*.txt
+backups/
+
+node_modules/
+*.tsbuildinfo

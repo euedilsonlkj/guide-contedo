@@ -1,0 +1,4 @@
+# Windows launchers need CRLF; shell scripts need LF, whatever the operator's Git settings.
+*.bat text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf

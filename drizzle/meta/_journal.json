@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1794108949231,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794110149456,
+      "tag": "0001_metricas",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794166618279,
+      "tag": "0002_contas_gemini",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794167792932,
+      "tag": "0003_tipo_de_gancho",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794169813245,
+      "tag": "0004_formato_e_episodio",
+      "breakpoints": true
+    }
+  ]
+}

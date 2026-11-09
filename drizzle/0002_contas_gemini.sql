@@ -1,0 +1,1 @@
+ALTER TABLE `gemini_runs` ADD `account` text DEFAULT '1' NOT NULL;

@@ -1,0 +1,91 @@
+{
+  "enabled": true,
+  "account": "principal",
+  "carouselDays": [
+    1,
+    3,
+    5
+  ],
+  "carouselTime": "18:30",
+  "reelDays": [
+    2,
+    4,
+    6
+  ],
+  "reelTime": "12:00",
+  "planDaysAhead": 7,
+  "voice": "Perfil da Guide, fala em nome da fábrica.",
+  "audience": "Donos de esquadria de alumínio.",
+  "callToAction": "Mandar VENDER no Direct.",
+  "rules": [
+    "Nunca citar preço"
+  ],
+  "facts": [
+    "A Guide é uma fábrica de esquadrias de alumínio em Caieiras, SP"
+  ],
+  "pillars": [
+    {
+      "key": "passos",
+      "name": "3 passos para vender mais",
+      "description": "Tutorial em 3 passos.",
+      "kinds": [
+        "carousel",
+        "reel"
+      ]
+    },
+    {
+      "key": "frase",
+      "name": "Frase de impacto",
+      "description": "Frase com foto de obra.",
+      "kinds": [
+        "carousel"
+      ],
+      "usesOwnerPhoto": true
+    },
+    {
+      "key": "dia",
+      "name": "Dia a dia do comercial",
+      "description": "Situações reais.",
+      "kinds": [
+        "reel"
+      ]
+    }
+  ],
+  "brand": {
+    "handle": "@guidevidroealuminio",
+    "wordmark": "GUIDE"
+  },
+  "imageStyle": "Realistic photo of an aluminium window factory.",
+  "maxVideosPerDay": 3,
+  "maxImagesPerDay": 10,
+  "autoPublish": true,
+  "lateToleranceHours": 10,
+  "reelFormats": [
+    {
+      "key": "novela",
+      "name": "Novela",
+      "description": "Episódio da série.",
+      "structure": "Cena 1 abre, cena 2 gancho.",
+      "scenes": 2,
+      "episode": true,
+      "weight": 2
+    },
+    {
+      "key": "errado",
+      "name": "Você está fazendo errado",
+      "description": "Errado e certo.",
+      "structure": "Cena 1 errado, cena 2 certo.",
+      "scenes": 2,
+      "weight": 1
+    }
+  ],
+  "series": {
+    "name": "A esquadria do Marcos",
+    "character": {
+      "name": "Marcos",
+      "role": "dono de esquadria",
+      "look": "Brazilian man in his 40s, short dark hair, navy polo shirt, in an aluminium window factory"
+    },
+    "premise": "O Marcos tem uma esquadria e perde obras para o concorrente."
+  }
+}
