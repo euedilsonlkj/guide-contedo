@@ -11,7 +11,9 @@ import { alerts, contentPosts, geminiRuns, jobs, type ContentPost } from "@/db/s
 import { getSetting, setSetting } from "@/core/settings";
 import { absoluteFromRoot, verifyMediaToken } from "@/content/files";
 import { planContentWork } from "@/content/planner";
-import { attachSeriesPortrait, getPost, runContentPlan, runContentWrite, updatePost } from "@/content/posts";
+import { attachSeriesPortrait, createPhotoPost, getPost, movePost, nextFreeDay, PanelInputError, runContentPlan, runContentWrite, updatePost, type SentPhoto } from "@/content/posts";
+import { localClock } from "@/lib/time";
+import { zonedInstant } from "@/content/schedule";
 import { claimNextJob, type Lane } from "@/core/queue";
 import { runJob, type WorkerContext } from "@/core/runner";
 import { launchTestChrome, type TestChrome } from "../fakes/chrome";
@@ -145,6 +147,11 @@ async function step(ctx: WorkerContext, now: Date): Promise<string> {
   return result;
 }
 
+/** Tomorrow at 06:00 local: a 7-day window from there holds every weekday once, whatever the time the tests run. */
+function earlyTomorrow(timeZone: string): Date {
+  return zonedInstant(localClock(new Date(Date.now() + 24 * 3600_000), timeZone).dateKey, "06:00", timeZone);
+}
+
 function posts(db: Db, kind?: ContentPost["kind"]): ContentPost[] {
   const rows = db.select().from(contentPosts).orderBy(asc(contentPosts.scheduledAt)).all();
   return kind ? rows.filter((post) => post.kind === kind) : rows;
@@ -158,7 +165,8 @@ function only(db: Db, id: number): void {
 describe("content arm", () => {
   it("plans the coming week with varied pillars and never plans a slot twice", async () => {
     const ctx = context(createTestDb());
-    await runContentPlan(ctx.db, ctx.env, ctx.config);
+    const now = earlyTomorrow(ctx.env.TIME_ZONE);
+    await runContentPlan(ctx.db, ctx.env, ctx.config, now);
     const week = posts(ctx.db);
     expect(week.length).toBe(6);
     expect(week.filter((post) => post.kind === "carousel")).toHaveLength(3);
@@ -174,7 +182,7 @@ describe("content arm", () => {
     for (const post of reels) expect(["novela", "errado"]).toContain(post.format);
     for (const post of week.filter((item) => item.kind === "carousel")) expect(post.format).toBeNull();
     expect(reels.filter((post) => post.format === "novela").map((post) => post.episode)).toEqual([1, 2]);
-    const again = await runContentPlan(ctx.db, ctx.env, ctx.config);
+    const again = await runContentPlan(ctx.db, ctx.env, ctx.config, now);
     expect(again.detail).toBe("week already planned");
     expect(posts(ctx.db)).toHaveLength(6);
   });
@@ -369,5 +377,86 @@ describe("content arm", () => {
 
     planContentWork(ctx.db, ctx.env, ctx.config, new Date(Date.now() + 11 * 3600_000));
     expect(getPost(ctx.db, post.id)?.status).toBe("skipped");
+  });
+
+  /** Three small JPEGs standing for the operator's photos (before, after, detail). */
+  function ownPhotos(): SentPhoto[] {
+    return (["antes", "depois", "detalhe"] as const).map((label, index) => {
+      const file = path.join(mediaDir, `foto-${index}.jpg`);
+      if (!existsSync(file)) execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=0x${["224466", "446622", "662244"][index]}:s=600x750`, "-frames:v", "1", file]);
+      return { data: readFileSync(file), label };
+    });
+  }
+
+  it("makes a carousel from the operator's photos: the AI sees them, the slides use them, it goes out", async () => {
+    const ctx = context(createTestDb());
+    const asked = gemini.prompts.length;
+    const post = createPhotoPost(ctx.db, ctx.env, ctx.config, { type: "antes_depois", note: "Varanda com guarda-corpo de vidro na torre.", kind: "carousel", when: "now", photos: ownPhotos() });
+    expect(post.origin).toBe("photos");
+    expect(post.brief?.photos.map((photo) => photo.label)).toEqual(["antes", "depois", "detalhe"]);
+
+    await step(ctx, new Date()); // written right away, whatever the time
+    const written = getPost(ctx.db, post.id) as ContentPost;
+    expect(written.status).toBe("written");
+    expect(written.topic).toBe("Antes e depois da varanda");
+    const request = openai.requests.filter((item) => item.schema === "photo_carousel").at(-1);
+    expect(request?.images).toBe(3);
+    expect(request?.instructions).toContain("Foto 1 (antes)");
+    expect(request?.instructions).toContain("Varanda com guarda-corpo de vidro na torre.");
+
+    await step(ctx, new Date()); // media_ready, no Gemini
+    await step(ctx, new Date()); // render
+    const ready = getPost(ctx.db, post.id) as ContentPost;
+    expect(ready.status).toBe("ready");
+    expect(ready.media.slides).toHaveLength(5);
+    expect(gemini.prompts.length).toBe(asked);
+
+    await step(ctx, new Date());
+    expect(getPost(ctx.db, post.id)?.status).toBe("published");
+  }, 120_000);
+
+  it("makes a narrated Reel from the photos even with the Reels of the plan turned off", async () => {
+    const ctx = context(createTestDb());
+    const tomorrow = localClock(new Date(Date.now() + 24 * 3600_000), ctx.env.TIME_ZONE).dateKey;
+    const post = createPhotoPost(ctx.db, ctx.env, { ...ctx.config, reelDays: [] }, { type: "obra_entregue", note: "", kind: "reel", when: "date", date: tomorrow, photos: ownPhotos() });
+    const config = { ...ctx.config, reelDays: [] };
+    const run = async () => {
+      planContentWork(ctx.db, ctx.env, config, new Date());
+      await drain(ctx, "content");
+    };
+    await run(); // write
+    expect(getPost(ctx.db, post.id)?.media.stills).toHaveLength(3);
+    await run(); // media_ready
+    await run(); // narrate and draw
+    const ready = getPost(ctx.db, post.id) as ContentPost;
+    expect(ready.status).toBe("ready");
+    expect(existsSync(absoluteFromRoot(ctx.env, ready.media.video as string) as string)).toBe(true);
+    expect(existsSync(absoluteFromRoot(ctx.env, ready.media.cover as string) as string)).toBe(true);
+  }, 180_000);
+
+  it("puts photos in a planned slot, swaps posts when moving one, and finds the next free day", async () => {
+    const ctx = context(createTestDb());
+    await runContentPlan(ctx.db, ctx.env, ctx.config, earlyTomorrow(ctx.env.TIME_ZONE));
+    const [first, second] = posts(ctx.db, "carousel");
+    const day = (post: ContentPost) => localClock(post.scheduledAt, ctx.env.TIME_ZONE).dateKey;
+
+    const photo = createPhotoPost(ctx.db, ctx.env, ctx.config, { type: "obra_entregue", note: "Sala com porta de correr.", kind: "carousel", when: "date", date: day(first), time: ctx.config.carouselTime, photos: ownPhotos() });
+    expect(photo.id).toBe(first.id);
+    expect(photo.origin).toBe("photos");
+    expect(posts(ctx.db, "carousel")).toHaveLength(3);
+    expect(() => createPhotoPost(ctx.db, ctx.env, ctx.config, { type: "obra_entregue", note: "", kind: "carousel", when: "date", date: day(first), time: ctx.config.carouselTime, photos: ownPhotos() })).toThrow(PanelInputError);
+
+    movePost(ctx.db, ctx.env, ctx.config, second.id, day(first), ctx.config.carouselTime);
+    expect(getPost(ctx.db, second.id)?.scheduledAt.getTime()).toBe(first.scheduledAt.getTime());
+    expect(getPost(ctx.db, photo.id)?.scheduledAt.getTime()).toBe(second.scheduledAt.getTime());
+
+    updatePost(ctx.db, second.id, { status: "published" });
+    expect(() => movePost(ctx.db, ctx.env, ctx.config, photo.id, day(first), ctx.config.carouselTime)).toThrow(PanelInputError);
+    expect(() => movePost(ctx.db, ctx.env, ctx.config, photo.id, "2020-01-01", "10:00")).toThrow(PanelInputError);
+
+    const free = nextFreeDay(ctx.db, ctx.config, ctx.env.TIME_ZONE);
+    const taken = new Set(posts(ctx.db).filter((post) => post.status !== "skipped").map(day));
+    expect(taken.has(localClock(free, ctx.env.TIME_ZONE).dateKey)).toBe(false);
+    expect(free.getTime()).toBeGreaterThan(Date.now());
   });
 });

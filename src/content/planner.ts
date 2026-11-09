@@ -96,7 +96,7 @@ export function planContentWork(db: Executor, env: Env, config: BusinessConfig, 
     }
 
     // Reels turned off (reelDays empty): the Reels already in the agenda leave it.
-    if (post.kind === "reel" && content.reelDays.length === 0) {
+    if (post.kind === "reel" && content.reelDays.length === 0 && post.origin !== "photos") {
       updatePost(db, post.id, { status: "skipped", error: "Reels desligados no config (reelDays vazio)" });
       recordEvent(db, "content_skipped", { postId: post.id, by: "config" });
       actions.push(`skip:${post.id}`);
@@ -104,7 +104,14 @@ export function planContentWork(db: Executor, env: Env, config: BusinessConfig, 
     }
 
     if (post.status === "planned") {
-      if (untilTime <= WRITE_AHEAD_MS && !stopIfDead(db, post, "content_write", "escrevendo") && enqueueContentOnce(db, "contentWrite", post.id)) actions.push(`write:${post.id}`);
+      // Posts from the operator's photos are written right away, so the preview shows up in minutes.
+      if ((post.origin === "photos" || untilTime <= WRITE_AHEAD_MS) && !stopIfDead(db, post, "content_write", "escrevendo") && enqueueContentOnce(db, "contentWrite", post.id)) actions.push(`write:${post.id}`);
+      continue;
+    }
+
+    if (post.status === "written" && post.origin === "photos") {
+      updatePost(db, post.id, { status: "media_ready" });
+      actions.push(`media_ready:${post.id}`);
       continue;
     }
 

@@ -52,6 +52,31 @@ Todo post fecha com a chamada nas duas opções: **WhatsApp (11) 97473-9209 ou O
 Direct**. Sem travessão, sem preço, sem prazo, sem porcentagem, sem garantia, sem link, sem
 inventar obra ou cliente; fatos sobre a Guide só os de `facts`.
 
+## Conteúdo com as suas fotos
+
+No painel, **+ Novo conteúdo com fotos**:
+
+1. Coloque até 8 fotos e marque cada uma como antes, depois, detalhe ou sem marca. As setas mudam
+   a ordem. O próprio navegador diminui as fotos antes de mandar.
+2. Diga que conteúdo é: antes e depois, obra entregue, instalação, bastidores da fábrica, produto
+   em destaque ou outro (você explica). Os tipos ficam em `photoTypes` no config.
+3. Conte sobre a obra do seu jeito. A IA vê as fotos e só fala da obra o que estiver escrito ali.
+4. Escolha carrossel ou **Reel com as fotos** (zoom em cada foto, legenda e narração, sem Gemini;
+   funciona mesmo com os Reels do plano desligados) e o dia: o próximo dia livre, um dia do
+   calendário (se já tiver post planejado nesse horário, as fotos entram no lugar dele) ou publicar
+   assim que ficar pronto.
+
+O texto sai na hora e a arte em seguida; o post aparece no calendário com a prévia, e dá para
+Refazer, Trocar dia, Publicar agora ou Pular.
+
+## Calendário
+
+A página inicial do painel é o calendário do mês: cada dia com os posts (verde publicado,
+laranja pronto, contorno planejado, vermelho parado, azul com as suas fotos). Clique no dia para
+ver a prévia e os botões, e as setas passam de mês. Os temas ficam planejados `planDaysAhead`
+dias à frente (30 na Guide); texto e arte continuam saindo só até 3 dias antes. Em **Trocar dia**,
+se o novo horário já tiver um post do mesmo tipo, os dois trocam de lugar.
+
 Os **Reels** estão desligados (`reelDays: []`), como no Vexa. Já ficam prontos para ligar: a
 série "A obra da Camila" (alguém construindo a primeira casa, com o mestre de obras e a
 arquiteta) e os formatos novela, POV, "você está fazendo errado", 3 dicas e antes e depois.
@@ -134,7 +159,7 @@ src/content/video.ts      monta o Reel narrado com ffmpeg
 src/integrations/openai/speech.ts   voz do narrador
 src/integrations/gemini   Gemini no Chrome do operador (porta 9236)
 src/integrations/instagram/publish.ts   publicação pela API da Meta
-src/panel/server.ts       painel e rota pública assinada dos arquivos
+src/panel/server.ts       painel (calendário, novo com fotos) e rota pública assinada dos arquivos
 ```
 
 `pnpm check` roda o typecheck e os testes (Gemini, OpenAI e Meta simulados, Chrome e ffmpeg de

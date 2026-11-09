@@ -9,7 +9,7 @@ import type { AddressInfo } from "node:net";
 export interface FakeOpenAI {
   baseUrl: string;
   speech: Array<{ input: string; voice: string; model: string }>;
-  requests: Array<{ schema: string; model: string; input: string; instructions: string }>;
+  requests: Array<{ schema: string; model: string; input: string; instructions: string; images: number }>;
   failNext: (count: number) => void;
   close: () => Promise<void>;
 }
@@ -83,6 +83,41 @@ function reelScript(instructions: string) {
   };
 }
 
+/** How many photos the photo-post prompt lists ("Foto 1 (antes)", "Foto 2"...). */
+function photoCount(instructions: string): number {
+  return (instructions.match(/^Foto \d+/gm) ?? []).length || 1;
+}
+
+function photoCarousel(instructions: string) {
+  const count = photoCount(instructions);
+  return {
+    topic: "Antes e depois da varanda",
+    hook: "A varanda mudou assim",
+    slides: [
+      { kind: "cover", photo: count, tag: "", title: "Do ferro ao vidro: a varanda mudou assim", body: "Arrasta para ver o antes" },
+      ...Array.from({ length: count }, (_, index) => ({ kind: "photo", photo: index + 1, tag: index === 0 ? "ANTES" : "DEPOIS", title: `Foto ${index + 1}`, body: "O que mudou nesta parte da obra." })),
+      { kind: "cta", photo: null, tag: "", title: "Quer a sua assim?", body: "Chama no WhatsApp ou manda ORÇAMENTO no Direct." },
+    ],
+    caption: "A varanda tinha guarda-corpo de ferro.\n\nChama no WhatsApp ou manda ORÇAMENTO no Direct.",
+    hashtags: ["#guardacorpo", "#antesedepois"],
+  };
+}
+
+function photoReel(instructions: string) {
+  const count = photoCount(instructions);
+  return {
+    topic: "Reel da varanda",
+    hook: "Olha o que virou essa varanda",
+    title: "Antes e depois da varanda",
+    scenes: Array.from({ length: Math.min(count, 3) }, (_, index) => ({
+      photo: index + 1,
+      narration: index === 0 ? "Essa varanda tinha um guarda-corpo de ferro pesado que tampava toda a vista da casa." : "Agora o guarda-corpo é de vidro na torre e a vista da varanda ficou livre de verdade.",
+    })),
+    caption: "Antes e depois da varanda.\n\nChama no WhatsApp ou manda ORÇAMENTO no Direct.",
+    hashtags: ["#guardacorpo"],
+  };
+}
+
 let reviews = 0;
 
 function outputFor(schema: string, input: string, instructions: string) {
@@ -93,6 +128,10 @@ function outputFor(schema: string, input: string, instructions: string) {
       return carousel(instructions, input.includes("previous draft was rejected"));
     case "reel":
       return reelScript(instructions);
+    case "photo_carousel":
+      return photoCarousel(instructions);
+    case "photo_reel":
+      return photoReel(instructions);
     case "reel_review": {
       // The first review of a post asks for changes; the rewrite passes.
       const fixed = input.includes('"hook": "Perdeu 18 janelas') && reviews++ % 2 === 1;
@@ -127,11 +166,15 @@ export async function startFakeOpenAI(speechFile?: string): Promise<FakeOpenAI> 
         res.writeHead(200, { "content-type": "audio/mpeg" }).end(speechFile ? readFileSync(speechFile) : Buffer.alloc(0));
         return;
       }
-      const body = JSON.parse(raw || "{}") as { model: string; input: string; instructions: string; text: { format: { name: string } } };
+      const body = JSON.parse(raw || "{}") as { model: string; input: unknown; instructions: string; text: { format: { name: string } } };
       const schema = body.text?.format?.name ?? "unknown";
-      requests.push({ schema, model: body.model, input: body.input, instructions: body.instructions });
-      const text = JSON.stringify(outputFor(schema, body.input ?? "", body.instructions ?? ""));
-      const inputTokens = Math.ceil(((body.input ?? "").length + (body.instructions ?? "").length) / 4);
+      // With pictures, the input is a message whose parts are the text and the images.
+      const parts = Array.isArray(body.input) ? ((body.input[0] as { content?: Array<{ type: string; text?: string }> })?.content ?? []) : [];
+      const input = typeof body.input === "string" ? body.input : parts.filter((part) => part.type === "input_text").map((part) => part.text ?? "").join("\n");
+      const images = parts.filter((part) => part.type === "input_image").length;
+      requests.push({ schema, model: body.model, input, instructions: body.instructions, images });
+      const text = JSON.stringify(outputFor(schema, input, body.instructions ?? ""));
+      const inputTokens = Math.ceil((input.length + (body.instructions ?? "").length) / 4);
       res.writeHead(200, { "content-type": "application/json" }).end(
         JSON.stringify({
           id: `resp_${requests.length}`,

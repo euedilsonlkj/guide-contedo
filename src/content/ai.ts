@@ -441,3 +441,171 @@ export function finalCaption(caption: string, hashtags: readonly string[]): stri
     .slice(0, 8);
   return tags.length > 0 ? `${caption.trim()}\n\n${tags.join(" ")}` : caption.trim();
 }
+
+// ---------------------------------------------------------------- posts from the operator's photos
+
+export const PHOTO_SLIDE_KINDS = ["cover", "photo", "text", "cta"] as const;
+
+const photoCarouselSchema = z.object({
+  /** Short title of the post for the calendar (what it is about). */
+  topic: z.string(),
+  hook: z.string(),
+  slides: z.array(
+    z.object({
+      kind: z.enum(PHOTO_SLIDE_KINDS),
+      /** Number of the photo shown (1 = first photo); null on text and cta slides. */
+      photo: z.number().int().nullable(),
+      /** Short tag in the corner of a photo slide (ANTES, DEPOIS, DETALHE...), or "". */
+      tag: z.string(),
+      title: z.string(),
+      body: z.string(),
+    }),
+  ),
+  caption: z.string(),
+  hashtags: z.array(z.string()),
+});
+export type PhotoCarouselScript = z.infer<typeof photoCarouselSchema>;
+export type PhotoSlide = PhotoCarouselScript["slides"][number];
+
+const photoReelSchema = z.object({
+  topic: z.string(),
+  hook: z.string(),
+  title: z.string(),
+  scenes: z.array(
+    z.object({
+      /** Number of the photo on screen during this scene (1 = first photo). */
+      photo: z.number().int(),
+      narration: z.string(),
+    }),
+  ),
+  caption: z.string(),
+  hashtags: z.array(z.string()),
+});
+export type PhotoReelScript = z.infer<typeof photoReelSchema>;
+
+/** Instagram takes at most 10 items in a carousel. */
+export const MAX_PHOTOS = 8;
+export const PHOTO_REEL_WORDS = { min: 10, max: 24, total: 100 };
+
+export function validatePhotoCarousel(script: PhotoCarouselScript, photoCount: number): string[] {
+  const problems: string[] = [];
+  const slides = script.slides;
+  if (slides.length < 3 || slides.length > 10) problems.push(`must have 3 to 10 slides, has ${slides.length}`);
+  if (slides[0]?.kind !== "cover") problems.push('first slide must be "cover"');
+  if (slides.at(-1)?.kind !== "cta") problems.push('last slide must be "cta"');
+  const used = new Set<number>();
+  slides.forEach((slide, index) => {
+    const n = index + 1;
+    const needsPhoto = slide.kind === "cover" || slide.kind === "photo";
+    if (needsPhoto && (slide.photo === null || slide.photo < 1 || slide.photo > photoCount)) problems.push(`slide ${n} (${slide.kind}) must show a photo from 1 to ${photoCount}`);
+    if (!needsPhoto && slide.photo !== null) problems.push(`slide ${n} (${slide.kind}) must have photo null`);
+    if (slide.photo !== null) used.add(slide.photo);
+    if (slide.title.length > (slide.kind === "cover" ? 70 : 80)) problems.push(`slide ${n} title too long`);
+    if (slide.body.length > (slide.kind === "photo" ? 160 : 240)) problems.push(`slide ${n} body too long`);
+    if (slide.tag.length > 14) problems.push(`slide ${n} tag over 14 characters`);
+  });
+  const unused = Array.from({ length: photoCount }, (_, index) => index + 1).filter((photo) => !used.has(photo));
+  if (unused.length > 0) problems.push(`every photo must appear; missing photo ${unused.join(", ")}`);
+  if (script.caption.length > 1900) problems.push("caption over 1900 characters");
+  return problems;
+}
+
+export function validatePhotoReel(script: PhotoReelScript, photoCount: number): string[] {
+  const problems: string[] = [];
+  if (script.scenes.length < 2 || script.scenes.length > 6) problems.push(`must have 2 to 6 scenes, has ${script.scenes.length}`);
+  if (script.hook.length > 50) problems.push("hook over 50 characters");
+  if (script.title.length > 40) problems.push("title over 40 characters");
+  script.scenes.forEach((scene, index) => {
+    if (scene.photo < 1 || scene.photo > photoCount) problems.push(`scene ${index + 1} must show a photo from 1 to ${photoCount}`);
+    const words = wordCount(scene.narration);
+    if (words < PHOTO_REEL_WORDS.min || words > PHOTO_REEL_WORDS.max) problems.push(`scene ${index + 1} narration has ${words} words, it must have ${PHOTO_REEL_WORDS.min} to ${PHOTO_REEL_WORDS.max}`);
+  });
+  const total = script.scenes.reduce((sum, scene) => sum + wordCount(scene.narration), 0);
+  if (total > PHOTO_REEL_WORDS.total) problems.push(`the whole narration has ${total} words, at most ${PHOTO_REEL_WORDS.total}`);
+  if (script.caption.length > 1900) problems.push("caption over 1900 characters");
+  return problems;
+}
+
+export interface PhotoInput {
+  /** Kind of content chosen by the operator. */
+  type: { key: string; name: string; description: string };
+  note: string;
+  /** Label of each photo, in order ("antes", "depois", "detalhe" or ""). */
+  labels: string[];
+  /** The photos themselves (data: URLs), so the model sees them. */
+  images: string[];
+}
+
+export type WrittenPhotoPost = { kind: "carousel"; script: PhotoCarouselScript } | { kind: "reel"; script: PhotoReelScript };
+
+/**
+ * Writes a post around the operator's own photos. The model sees the photos and gets what the
+ * operator wrote; facts about the job come only from that text, everything else is the usual rules.
+ */
+export async function writePhotoPost(db: Executor, env: Env, content: ContentConfig, kind: "carousel" | "reel", input: PhotoInput, recent: readonly RecentPost[]): Promise<WrittenPhotoPost> {
+  const photoList = input.labels.map((label, index) => `Foto ${index + 1}${label ? ` (${label})` : ""}`).join("\n");
+  const common = `${HARD_RULES}
+
+${brief(content)}
+
+The post is made with the company's OWN PHOTOS of a real job, attached in this order:
+${photoList}
+
+KIND OF CONTENT: ${input.type.name}. ${input.type.description}
+WHAT THE OPERATOR SAID ABOUT THIS JOB (the only facts about this job you may state; never add a place, a client, a size, a price, a deadline or a detail that is not here or clearly visible in the photos):
+${input.note.trim() || "(nothing; describe only what is clearly visible and keep it general)"}
+
+Look at each photo and talk about what it really shows. Never say a photo shows something it does not.
+topic: a short title of this post for the calendar (at most 60 characters).
+
+RECENT POSTS (do not repeat their hooks):
+${recent.map((item) => `- ${item.topic}${item.hook ? ` | ${item.hook}` : ""}`).join("\n") || "- (none)"}`;
+
+  const carouselInstructions = `You write an Instagram carousel built on the photos above.
+Slide 1 kind "cover": photo = the most impressive photo (usually an "after" one), title is the hook (at most 70 characters), body a short subtitle (at most 90 characters) or "".
+Then kind "photo" slides: one photo each, in an order that tells the story (for before and after, alternate or pair them so the change is obvious). tag: a short word in capitals for the corner (ANTES, DEPOIS, DETALHE, or another short one that fits) or "". title: at most 60 characters, body: one short sentence (at most 150 characters) about what this photo shows. Every photo must appear at least once (the cover counts).
+Optionally one kind "text" slide (photo null) with a useful explanation for the AUDIENCE.
+Last slide kind "cta" (photo null): title with the call to action, body one short supporting line. tag "" on cover, text and cta.
+At most 10 slides. Caption: starts with the hook in other words, tells the story of the job in short paragraphs, ends with the call to action. hashtags: 3 to 6 (with "#").`;
+
+  const reelInstructions = `You write a short narrated Instagram Reel of 15 to 40 seconds made only of the photos above: each scene shows one photo with a slow zoom while the narrator speaks, with subtitles.
+2 to 6 scenes, in an order that tells the story (for before and after: first the before, then the after). Every scene: photo (its number) and narration in Brazilian Portuguese, ${PHOTO_REEL_WORDS.min} to ${PHOTO_REEL_WORDS.max} words, at most ${PHOTO_REEL_WORDS.total} in total. The first spoken words already carry the hook. Short sentences, present tense, no filler.
+hook: big text on screen in the first 2 seconds and on the cover (at most 45 characters). title: header on top (at most 36 characters).
+The last scene ends with the call to action in one short sentence. Caption: first line makes people open it, then the story in 2 or 3 short paragraphs, then the call to action. hashtags: 3 to 6 (with "#").`;
+
+  let feedback = "";
+  let problems: string[] = [];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS + 1; attempt += 1) {
+    if (kind === "carousel") {
+      const script = await generateStructured(db, env, {
+        purpose: "content_write_photo_carousel",
+        schema: photoCarouselSchema,
+        schemaName: "photo_carousel",
+        instructions: `${carouselInstructions}\n\n${common}`,
+        input: `Write the carousel.${feedback}`,
+        images: input.images,
+        maxOutputTokens: 6000,
+      });
+      problems = [
+        ...validatePhotoCarousel(script, input.images.length),
+        ...checkContentText([script.topic, script.hook, script.caption, ...script.slides.flatMap((slide) => [slide.title, slide.body, slide.tag])]),
+      ];
+      if (problems.length === 0) return { kind, script };
+    } else {
+      const script = await generateStructured(db, env, {
+        purpose: "content_write_photo_reel",
+        schema: photoReelSchema,
+        schemaName: "photo_reel",
+        instructions: `${reelInstructions}\n\n${common}`,
+        input: `Write the Reel.${feedback}`,
+        images: input.images,
+        maxOutputTokens: 6000,
+      });
+      problems = [...validatePhotoReel(script, input.images.length), ...checkContentText([script.topic, script.hook, script.title, script.caption, ...script.scenes.map((scene) => scene.narration)])];
+      if (problems.length === 0) return { kind, script };
+    }
+    recordEvent(db, "content_write_rejected", { photos: true, attempt, problems });
+    feedback = `\n\nYour previous draft was rejected for: ${problems.join("; ")}. Write it again avoiding all of them.`;
+  }
+  throw new ContentRejectedError(problems);
+}

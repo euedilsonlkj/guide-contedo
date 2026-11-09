@@ -70,6 +70,15 @@ const DEFAULT_SERIES = {
   premise: "O Pedro tem uma empresa de esquadria de alumínio com dois vendedores (o Matheus, novato e animado, e a Carla, experiente e direta). Tudo do comercial roda no WhatsApp e na cabeça dele. Ele investe em anúncio, chovem pedidos de orçamento, mas as vendas não acompanham, e o concorrente da cidade, o Rogério, vive fechando as obras que ele orçou. A cada episódio ele bate num problema do comercial, erra, aprende e muda um pedaço do jeito de vender.",
 };
 
+const DEFAULT_PHOTO_TYPES = [
+  { key: "antes_depois", name: "Antes e depois", description: "Mostra a mesma obra antes e depois. Alterna as fotos de antes e de depois, com o que mudou escrito em cima de cada uma, e termina com o resultado." },
+  { key: "obra_entregue", name: "Obra entregue", description: "Apresenta uma obra pronta: capa com a melhor foto, um slide por foto dizendo o que foi feito ali, e o fechamento." },
+  { key: "instalacao", name: "Instalação", description: "Conta a instalação passo a passo, na ordem das fotos." },
+  { key: "fabrica", name: "Bastidores da fábrica", description: "Mostra a fabricação por dentro, uma etapa por foto." },
+  { key: "produto", name: "Produto em destaque", description: "Um produto só: o que é, onde usar e por quê, usando as fotos para mostrar." },
+  { key: "livre", name: "Outro (eu explico)", description: "O operador explica no texto o que quer; siga exatamente o que ele pediu." },
+];
+
 const PLACEHOLDER = /\{\{.*?\}\}/;
 
 const textList = z
@@ -91,7 +100,7 @@ const contentSchema = z
     reelDays: z.array(z.number().int().min(0).max(6)).default([0, 1, 2, 3, 4, 5, 6]),
     reelTime: z.string().regex(/^\d{2}:\d{2}$/).default("12:00"),
     /** Days ahead that are always planned. */
-    planDaysAhead: z.number().int().min(3).max(14).default(7),
+    planDaysAhead: z.number().int().min(3).max(31).default(7),
     /** Who speaks in the posts and to whom (for the prompts). */
     voice: z.string().min(1),
     audience: z.string().min(1),
@@ -212,6 +221,14 @@ const contentSchema = z
         premise: z.string().min(1),
       })
       .default(DEFAULT_SERIES),
+    /**
+     * Kinds of post made from the operator's own photos (panel "Novo conteúdo com fotos"): the
+     * operator picks one, and the description tells the writer how to build it.
+     */
+    photoTypes: z
+      .array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), name: z.string().min(1), description: z.string().min(1) }))
+      .min(1)
+      .default(DEFAULT_PHOTO_TYPES),
     /** Gemini videos asked per day at most (the account's daily limit). */
     maxVideosPerDay: z.number().int().min(1).max(20).default(3),
     maxImagesPerDay: z.number().int().min(1).max(50).default(10),

@@ -34,8 +34,13 @@ export interface StructuredRequest<S extends z.ZodType> {
   schemaName: string;
   instructions: string;
   input: string;
+  /** Pictures the model looks at along with the input (data: URLs), e.g. the operator's photos. */
+  images?: string[];
   maxOutputTokens?: number;
 }
+
+/** Each picture is sent at low detail: enough to see what is in it, at a small fixed cost. */
+const TOKENS_PER_IMAGE = 100;
 
 const CHARS_PER_TOKEN = 3.5;
 let client: OpenAI | undefined;
@@ -72,12 +77,25 @@ export function assertBudget(db: Executor, env: Env, worstCaseUsd: number): void
 export async function generateStructured<S extends z.ZodType>(db: Executor, env: Env, request: StructuredRequest<S>): Promise<z.infer<S>> {
   const openai = getClient(env);
   const maxOutputTokens = Math.max(2000, request.maxOutputTokens ?? 4000);
-  assertBudget(db, env, costUsd(env, Math.ceil((request.instructions.length + request.input.length) / CHARS_PER_TOKEN), maxOutputTokens));
+  const images = request.images ?? [];
+  assertBudget(db, env, costUsd(env, Math.ceil((request.instructions.length + request.input.length) / CHARS_PER_TOKEN) + images.length * TOKENS_PER_IMAGE, maxOutputTokens));
+  const input =
+    images.length === 0
+      ? request.input
+      : [
+          {
+            role: "user" as const,
+            content: [
+              { type: "input_text" as const, text: request.input },
+              ...images.map((image_url) => ({ type: "input_image" as const, image_url, detail: "low" as const })),
+            ],
+          },
+        ];
   try {
     const response = await openai.responses.parse({
       model: env.OPENAI_MODEL,
       instructions: request.instructions,
-      input: request.input,
+      input,
       max_output_tokens: maxOutputTokens,
       text: { format: zodTextFormat(request.schema, request.schemaName) },
     });

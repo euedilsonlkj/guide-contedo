@@ -9,7 +9,7 @@
   "carouselTime": "18:30",
   "reelDays": [],
   "reelTime": "12:00",
-  "planDaysAhead": 7,
+  "planDaysAhead": 30,
   "voice": "Perfil da Guide Vidro e Alumínio, fábrica de esquadrias de alumínio em Caieiras, SP. Fala em nome da empresa (nós, a Guide), como quem fabrica e instala esquadria todo dia e explica sem enrolação, em português simples, sem termo técnico sem explicar, sem tom de vendedor chato e sem tom de guru.",
   "audience": "Quem está construindo ou reformando na Grande São Paulo (donos de casa, arquitetos, engenheiros, construtoras e mestres de obra) e precisa escolher, medir e comprar esquadria de alumínio e guarda-corpo.",
   "callToAction": "Pedir o orçamento da obra pelo WhatsApp (11) 97473-9209 ou mandando a palavra ORÇAMENTO no Direct. Dizer sempre o que a pessoa recebe (o orçamento da obra com a linha certa para cada vão) e dar as duas opções, WhatsApp ou Direct. Nunca mandar para o site.",
@@ -221,5 +221,37 @@
       "look": "Brazilian woman around 34 years old, medium build, long dark wavy hair tied back, plain white t-shirt without any logo or text, jeans, at a house under construction in Brazil"
     },
     "premise": "A Camila está construindo a primeira casa dela na Grande São Paulo, com o Seu Zé (mestre de obras experiente, que acha que sabe tudo) e a Bia (arquiteta, exigente com acabamento). Ela quer uma sala com porta de correr grande e varanda com guarda-corpo de vidro, mas não entende nada de esquadria. A cada episódio ela bate num problema da obra (vão fora de esquadro, orçamento que não dá para comparar, porta pesada demais para a linha escolhida), erra, aprende e escolhe melhor."
-  }
+  },
+  "photoTypes": [
+    {
+      "key": "antes_depois",
+      "name": "Antes e depois",
+      "description": "Mostra a mesma obra antes e depois. Alterna as fotos de antes e de depois, com o que mudou escrito em cima de cada uma, e termina com o resultado e a linha ou o produto usado, se o operador disse."
+    },
+    {
+      "key": "obra_entregue",
+      "name": "Obra entregue",
+      "description": "Apresenta uma obra pronta da Guide: capa com a melhor foto, um slide por foto dizendo o que foi feito naquele vão ou ambiente, e o fechamento."
+    },
+    {
+      "key": "instalacao",
+      "name": "Instalação",
+      "description": "Conta a instalação passo a passo, na ordem das fotos, mostrando o cuidado da equipe da Guide."
+    },
+    {
+      "key": "fabrica",
+      "name": "Bastidores da fábrica",
+      "description": "Mostra a fabricação por dentro na fábrica de Caieiras, uma etapa por foto: corte, montagem, conferência."
+    },
+    {
+      "key": "produto",
+      "name": "Produto em destaque",
+      "description": "Um produto só (porta pivotante, persiana integrada, guarda-corpo...): o que é, onde usar e por quê, usando as fotos para mostrar."
+    },
+    {
+      "key": "livre",
+      "name": "Outro (eu explico)",
+      "description": "O operador explica no texto o que quer; siga exatamente o que ele pediu."
+    }
+  ]
 }

@@ -105,6 +105,24 @@ export interface PostMetrics {
   interactions: number | null;
 }
 
+/** Where a post came from: the weekly plan, or the operator's own photos sent in the panel. */
+export const CONTENT_ORIGINS = ["plan", "photos"] as const;
+export type ContentOrigin = (typeof CONTENT_ORIGINS)[number];
+
+/** Label the operator gives each photo of a photo post. */
+export const PHOTO_LABELS = ["antes", "depois", "detalhe", ""] as const;
+export type PhotoLabel = (typeof PHOTO_LABELS)[number];
+
+/** What the operator sent for a post made from their photos. */
+export interface PhotoBrief {
+  /** Kind of content (config photoTypes), e.g. "antes_depois". */
+  type: string;
+  /** What the operator wrote about the job, in their own words: the only facts about it the post may state. */
+  note: string;
+  /** Photos in slide order, relative to CONTENT_DIR. */
+  photos: Array<{ file: string; label: PhotoLabel }>;
+}
+
 /** Files of a post, relative to CONTENT_DIR. */
 export interface ContentMedia {
   /** Gemini photo for the carousel cover. */
@@ -124,6 +142,8 @@ export interface ContentMedia {
   clipsGivenUp?: number[];
   /** Final JPEG slides of a carousel. */
   slides?: string[];
+  /** Reel made from the operator's photos: the photo shown in each scene (instead of Gemini clips). */
+  stills?: string[];
   /** Final MP4 of a Reel. */
   video?: string;
   /** Reel cover (thumbnail) with the hook in big type, sent as cover_url. */
@@ -147,6 +167,10 @@ export const contentPosts = sqliteTable(
     episode: integer("episode"),
     scheduledAt: timestamp("scheduled_at").notNull(),
     status: text("status", { enum: CONTENT_STATUSES }).notNull().default("planned"),
+    /** "plan": chosen by the weekly plan; "photos": made from the operator's photos sent in the panel. */
+    origin: text("origin", { enum: CONTENT_ORIGINS }).notNull().default("plan"),
+    /** Photo post: the photos and what the operator said about them. */
+    brief: json<PhotoBrief>("brief"),
     topic: text("topic").notNull(),
     angle: text("angle"),
     hook: text("hook"),

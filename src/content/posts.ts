@@ -1,9 +1,9 @@
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import type { Executor } from "@/db/client";
 import { raiseAlert, recordEvent } from "@/core/journal";
-import { contentPosts, geminiRuns, jobs, type ContentMedia, type ContentPost, type Job } from "@/db/schema";
+import { contentPosts, geminiRuns, jobs, PHOTO_LABELS, type ContentMedia, type ContentPost, type Job, type PhotoBrief, type PhotoLabel } from "@/db/schema";
 import { getSetting, setSetting } from "@/core/settings";
 import { BrowserUnavailableError, generateWithGemini, GeminiStateError, type GeminiMedia } from "@/integrations/gemini/web";
 import { synthesizeSpeech } from "@/integrations/openai/speech";
@@ -13,10 +13,10 @@ import type { Env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { DAY_MS, HOUR_MS, localClock, MINUTE_MS } from "@/lib/time";
 import { enqueueJob, type JobKind } from "@/core/queue";
-import { ContentRejectedError, finalCaption, formatOf, planTopics, writePostScript, type CarouselScript, type EpisodeSummary, type RecentPost, type ReelScript } from "./ai";
+import { ContentRejectedError, finalCaption, formatOf, MAX_PHOTOS, planTopics, writePhotoPost, writePostScript, type CarouselScript, type EpisodeSummary, type PhotoCarouselScript, type PhotoReelScript, type RecentPost, type ReelScript } from "./ai";
 import { learnedFormats, learnedHookTypes, learnedPillars, measuredPosts, performanceBrief } from "./learning";
 import { absoluteFromRoot, mediaPath, ownerPhotos, postDir, publicBaseUrl, relativeToRoot, seriesDir, seriesPortrait } from "./files";
-import { carouselPages, reelCoverPage, reelPages, renderPages, subtitleChunks } from "./render";
+import { carouselPages, photoCarouselPages, reelCoverPage, reelPages, renderPages, subtitleChunks } from "./render";
 import { assignFormats, assignHookTypes, assignPillars, upcomingSlots, zonedInstant, type ContentConfig, type Pillar } from "./schedule";
 import { buildStoryReel, extractFrame, mediaDuration, prepareNarration, sceneSeconds, subtitleTimings, type StoryScene, type TimedOverlay } from "./video";
 
@@ -220,6 +220,7 @@ export async function runContentWrite(db: Executor, env: Env, config: BusinessCo
   const post = getPost(db, jobPostId(job));
   if (!content || !post) return { status: "skipped", detail: "no content config or post" };
   if (post.status !== "planned") return { status: "skipped", detail: `post is ${post.status}` };
+  if (post.origin === "photos") return writeFromPhotos(db, env, content, post);
   const pillar = pillarOf(content, post.pillar);
   if (!pillar) {
     updatePost(db, post.id, { status: "failed", error: `pilar "${post.pillar}" não existe mais no config` });
@@ -261,6 +262,8 @@ export async function runContentWrite(db: Executor, env: Env, config: BusinessCo
 /** Next piece of Gemini media the post still needs, or null. */
 export function nextGeminiNeed(post: ContentPost, pillar: Pillar | undefined): { kind: GeminiMedia; position: number } | null {
   if (post.status !== "written") return null;
+  // Posts made from the operator's photos need nothing from Gemini.
+  if (post.origin === "photos") return null;
   const media = post.media;
   if (post.kind === "carousel") {
     if (pillar?.usesOwnerPhoto && media.photo) return null;
@@ -482,7 +485,18 @@ export async function runContentRender(db: Executor, env: Env, config: BusinessC
   if (!content || !post) return { status: "skipped", detail: "no content config or post" };
   if (post.status !== "media_ready") return { status: "skipped", detail: `post is ${post.status}` };
   const media: ContentMedia = { ...post.media };
-  if (post.kind === "carousel") {
+  if (post.origin === "photos" && post.kind === "carousel") {
+    const script = post.script as unknown as PhotoCarouselScript;
+    const photos = (post.brief?.photos ?? []).map((photo) => existing(env, photo.file));
+    const files = await renderPages(env, photoCarouselPages(content.brand, script, postDir(env, post.id, "slides"), photos));
+    media.slides = files.map((file) => relativeToRoot(env, file));
+  } else if (post.origin === "photos") {
+    const script = photoReelAsStory(post.script as unknown as PhotoReelScript);
+    media.narration = await narrate(db, env, content, post, script);
+    const reel = await renderStoryReel(env, content, post, script, media);
+    media.video = relativeToRoot(env, reel.video);
+    media.cover = relativeToRoot(env, reel.cover);
+  } else if (post.kind === "carousel") {
     const script = post.script as unknown as CarouselScript;
     const dir = postDir(env, post.id, "slides");
     const pages = carouselPages(content.brand, script, dir, { cover: existing(env, media.image), photo: existing(env, media.photo) });
@@ -509,7 +523,7 @@ async function narrate(db: Executor, env: Env, content: ContentConfig, post: Con
     const file = previous && previous.endsWith(".m4a") ? previous : path.join(dir, `cena-${index + 1}.m4a`);
     if (file !== previous) {
       const raw = path.join(dir, `cena-${index + 1}.mp3`);
-      if (!existsSync(raw)) await synthesizeSpeech(db, env, { ...content.narration, style: formatOf(content, post).voiceStyle ?? content.narration.style, text: script.scenes[index].narration, file: raw });
+      if (!existsSync(raw)) await synthesizeSpeech(db, env, { ...content.narration, style: (post.origin === "photos" ? undefined : formatOf(content, post).voiceStyle) ?? content.narration.style, text: script.scenes[index].narration, file: raw });
       await prepareNarration(env, raw, file);
     }
     files.push(relativeToRoot(env, file));
@@ -534,7 +548,7 @@ async function renderStoryReel(env: Env, content: ContentConfig, post: ContentPo
   const tag = post.episode && formatOf(content, post).episode ? `Parte ${post.episode}` : null;
   const pages = reelPages(content.brand, { hook: script.hook, tag, title: script.title ?? "", chunks, ending: reelEnding(content, post) }, dir);
   await renderPages(env, [pages.hook, ...(script.title ? [pages.title] : []), ...pages.subtitles.flat(), pages.cta, pages.fallback]);
-  const still = existing(env, media.character) ?? pages.fallback.file;
+  const portrait = existing(env, media.character) ?? pages.fallback.file;
   const scenes: StoryScene[] = [];
   for (let index = 0; index < script.scenes.length; index += 1) {
     const narration = absoluteFromRoot(env, media.narration?.[index] ?? "") as string;
@@ -545,6 +559,7 @@ async function renderStoryReel(env: Env, content: ContentConfig, post: ContentPo
     if (script.title) overlays.unshift({ file: pages.title.file, start: index === 0 ? hookEnd : 0, end: length });
     if (index === 0) overlays.unshift({ file: pages.hook.file, start: 0, end: hookEnd });
     if (index === script.scenes.length - 1) overlays.push({ file: pages.cta.file, start: Math.max(0, length - 2.6), end: length });
+    const still = existing(env, media.stills?.[index]) ?? portrait;
     scenes.push({ clip: existing(env, media.clips?.[index]), still, narration, narrationSeconds: seconds, overlays });
   }
   const video = await buildStoryReel(env, { scenes, workDir: dir, output: path.join(postDir(env, post.id), "reel.mp4") });
@@ -552,7 +567,7 @@ async function renderStoryReel(env: Env, content: ContentConfig, post: ContentPo
   // Cover: a frame of the first clip (or the portrait) with the hook in big type.
   const firstClip = existing(env, media.clips?.[0]);
   const frame = firstClip ? await extractFrame(env, firstClip, 1.2, path.join(dir, "cover-frame.jpg")).catch(() => null) : null;
-  const coverPage = reelCoverPage(content.brand, { hook: script.hook, tag, series: tag ? content.series.name : null, background: frame ?? existing(env, media.character) }, path.join(postDir(env, post.id), "capa.jpg"));
+  const coverPage = reelCoverPage(content.brand, { hook: script.hook, tag, series: tag ? content.series.name : null, background: frame ?? existing(env, media.stills?.[0]) ?? existing(env, media.character) }, path.join(postDir(env, post.id), "capa.jpg"));
   const [cover] = await renderPages(env, [coverPage]);
   return { video, cover };
 }
@@ -722,4 +737,219 @@ export function publishNow(db: Executor, id: number): boolean {
 
 export function postsBetween(db: Executor, from: Date, to: Date): ContentPost[] {
   return db.select().from(contentPosts).where(and(gte(contentPosts.scheduledAt, from), lte(contentPosts.scheduledAt, to))).orderBy(asc(contentPosts.scheduledAt)).all();
+}
+
+// ---------------------------------------------------------------- posts from the operator's photos
+
+/** A photo the operator sent from the panel. */
+export interface SentPhoto {
+  data: Buffer;
+  label: PhotoLabel;
+}
+
+export interface PhotoPostRequest {
+  type: string;
+  note: string;
+  kind: "carousel" | "reel";
+  /** "next": next day with nothing scheduled; "date": the day and time given; "now": as soon as it is ready. */
+  when: "next" | "date" | "now";
+  date?: string;
+  time?: string;
+  photos: SentPhoto[];
+}
+
+/** A request the panel shows back to the operator in plain words. */
+export class PanelInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PanelInputError";
+  }
+}
+
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+
+/** JPEG, PNG or WebP by their first bytes; anything else is refused. */
+export function imageExtension(data: Buffer): ".jpg" | ".png" | ".webp" | null {
+  if (data.length > 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return ".jpg";
+  if (data.length > 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return ".png";
+  if (data.length > 12 && data.subarray(0, 4).toString("latin1") === "RIFF" && data.subarray(8, 12).toString("latin1") === "WEBP") return ".webp";
+  return null;
+}
+
+/** Posts of the account that still count on the calendar (not skipped). */
+function activePostsBetween(db: Executor, account: string, from: Date, to: Date): ContentPost[] {
+  return db
+    .select()
+    .from(contentPosts)
+    .where(and(eq(contentPosts.account, account), gte(contentPosts.scheduledAt, from), lte(contentPosts.scheduledAt, to), sql`${contentPosts.status} != 'skipped'`))
+    .all();
+}
+
+/**
+ * The next local day, from today, with nothing on the calendar, at the carousel time. Today only
+ * counts while there are still 2 hours before that time (time to write and draw).
+ */
+export function nextFreeDay(db: Executor, content: ContentConfig, timeZone: string, now = new Date()): Date {
+  const taken = new Set(activePostsBetween(db, content.account, new Date(now.getTime() - DAY_MS), new Date(now.getTime() + 120 * DAY_MS)).map((post) => localClock(post.scheduledAt, timeZone).dateKey));
+  for (let offset = 0; offset < 120; offset += 1) {
+    const dateKey = localClock(new Date(now.getTime() + offset * DAY_MS), timeZone).dateKey;
+    const at = zonedInstant(dateKey, content.carouselTime, timeZone);
+    if (at.getTime() - now.getTime() < 2 * HOUR_MS) continue;
+    if (!taken.has(dateKey)) return at;
+  }
+  return zonedInstant(localClock(new Date(now.getTime() + DAY_MS), timeZone).dateKey, content.carouselTime, timeZone);
+}
+
+function slotTaken(db: Executor, account: string, kind: ContentPost["kind"], at: Date): ContentPost | undefined {
+  return db
+    .select()
+    .from(contentPosts)
+    .where(and(eq(contentPosts.account, account), eq(contentPosts.kind, kind), eq(contentPosts.scheduledAt, at)))
+    .get();
+}
+
+const LOCKED: ContentPost["status"][] = ["published", "publishing"];
+
+function requestedInstant(content: ContentConfig, timeZone: string, date: string | undefined, time: string | undefined, now: Date): Date {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new PanelInputError("Escolha o dia.");
+  const hhmm = time && /^\d{2}:\d{2}$/.test(time) ? time : content.carouselTime;
+  const at = zonedInstant(date, hhmm, timeZone);
+  if (Number.isNaN(at.getTime())) throw new PanelInputError("Dia ou horário inválido.");
+  if (at.getTime() < now.getTime() - MINUTE_MS) throw new PanelInputError("Esse dia e horário já passaram. Escolha outro.");
+  return at;
+}
+
+/**
+ * Creates a post from the operator's photos. When the chosen time already has a planned post
+ * of the same kind that did not go out, the photos take its place (the planned topic leaves).
+ */
+export function createPhotoPost(db: Executor, env: Env, content: ContentConfig, request: PhotoPostRequest, now = new Date()): ContentPost {
+  const type = content.photoTypes.find((item) => item.key === request.type);
+  if (!type) throw new PanelInputError("Escolha que conteúdo é esse.");
+  if (request.kind !== "carousel" && request.kind !== "reel") throw new PanelInputError("Escolha carrossel ou Reel.");
+  if (request.photos.length === 0) throw new PanelInputError("Coloque pelo menos uma foto.");
+  if (request.photos.length > MAX_PHOTOS) throw new PanelInputError(`No máximo ${MAX_PHOTOS} fotos por post.`);
+  if (request.kind === "reel" && request.photos.length < 2) throw new PanelInputError("O Reel precisa de pelo menos 2 fotos.");
+  const extensions = request.photos.map((photo) => (photo.data.length <= MAX_PHOTO_BYTES ? imageExtension(photo.data) : null));
+  if (extensions.some((ext) => !ext)) throw new PanelInputError("Uma das fotos não é JPG, PNG ou WebP (ou passou de 15 MB).");
+  const note = request.note.trim().slice(0, 2000);
+
+  const at = request.when === "now" ? new Date(now.getTime()) : request.when === "date" ? requestedInstant(content, env.TIME_ZONE, request.date, request.time, now) : nextFreeDay(db, content, env.TIME_ZONE, now);
+  const topic = `${type.name}${note ? `: ${note.split(/\s+/).slice(0, 8).join(" ")}` : ""}`.slice(0, 120);
+  const values = {
+    account: content.account,
+    kind: request.kind,
+    pillar: "fotos",
+    hookType: null,
+    format: null,
+    episode: null,
+    origin: "photos" as const,
+    status: "planned" as const,
+    scheduledAt: at,
+    topic,
+    angle: null,
+    hook: null,
+    script: null,
+    caption: null,
+    media: {},
+    error: null,
+    attempts: 0,
+    brief: { type: type.key, note, photos: [] } as PhotoBrief,
+  };
+  const taken = slotTaken(db, content.account, request.kind, at);
+  let id: number;
+  if (taken) {
+    if (LOCKED.includes(taken.status) || taken.origin === "photos") throw new PanelInputError("Esse dia e horário já têm um post com fotos ou já publicado. Escolha outro horário.");
+    clearDeadJobs(db, taken.id);
+    updatePost(db, taken.id, { ...values, containerId: null, igMediaId: null, permalink: null });
+    recordEvent(db, "content_replaced_by_photos", { postId: taken.id, topic: taken.topic });
+    id = taken.id;
+  } else {
+    id = (db.insert(contentPosts).values(values).returning({ id: contentPosts.id }).get() as { id: number }).id;
+  }
+  const dir = postDir(env, id, "fotos");
+  const photos = request.photos.map((photo, index) => {
+    const file = path.join(dir, `foto-${index + 1}${extensions[index]}`);
+    writeFileSync(file, photo.data);
+    return { file: relativeToRoot(env, file), label: (PHOTO_LABELS as readonly string[]).includes(photo.label) ? photo.label : ("" as PhotoLabel) };
+  });
+  updatePost(db, id, { brief: { type: type.key, note, photos } });
+  recordEvent(db, "content_photo_post", { postId: id, kind: request.kind, type: type.key, photos: photos.length });
+  return getPost(db, id) as ContentPost;
+}
+
+function dataUrl(file: string): string {
+  const ext = path.extname(file).toLowerCase();
+  const type = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+  return `data:${type};base64,${readFileSync(file).toString("base64")}`;
+}
+
+/** A photo Reel in the shape of a story Reel, so it is narrated and drawn the same way. */
+export function photoReelAsStory(script: PhotoReelScript): ReelScript {
+  return {
+    hook: script.hook,
+    title: script.title,
+    scenes: script.scenes.map((scene) => ({ beat: `Foto ${scene.photo}`, videoPrompt: "", narration: scene.narration })),
+    summary: script.topic,
+    shareReason: "",
+    caption: script.caption,
+    hashtags: script.hashtags,
+  };
+}
+
+async function writeFromPhotos(db: Executor, env: Env, content: ContentConfig, post: ContentPost): Promise<ContentOutcome> {
+  const brief = post.brief;
+  const type = content.photoTypes.find((item) => item.key === brief?.type) ?? content.photoTypes.at(-1);
+  const files = (brief?.photos ?? []).map((photo) => existing(env, photo.file));
+  if (!brief || !type || files.length === 0 || files.some((file) => !file)) {
+    updatePost(db, post.id, { status: "failed", error: "as fotos deste post sumiram da pasta content; crie o post de novo" });
+    return { status: "failed", detail: "photos missing" };
+  }
+  try {
+    const recent = recentPosts(db, content.account).filter((item) => item.topic !== post.topic);
+    const written = await writePhotoPost(db, env, content, post.kind, { type, note: brief.note, labels: brief.photos.map((photo) => photo.label), images: (files as string[]).map(dataUrl) }, recent);
+    const media: ContentMedia = {};
+    if (written.kind === "reel") media.stills = written.script.scenes.map((scene) => brief.photos[scene.photo - 1]?.file ?? brief.photos[0].file);
+    updatePost(db, post.id, {
+      status: "written",
+      script: written.script as unknown as Record<string, unknown>,
+      topic: written.script.topic.slice(0, 120) || post.topic,
+      hook: written.script.hook,
+      caption: finalCaption(written.script.caption, written.script.hashtags),
+      media,
+      error: null,
+    });
+    recordEvent(db, "content_written", { postId: post.id, kind: post.kind, origin: "photos" });
+    return done("written from photos");
+  } catch (error) {
+    if (error instanceof ContentRejectedError) {
+      updatePost(db, post.id, { status: "failed", error: `texto recusado pelas regras: ${error.violations.join("; ")}`.slice(0, 500) });
+      raiseAlert(db, "warning", `content_rejected:${post.id}`, "Um post com suas fotos parou: a IA não conseguiu escrever dentro das regras. Use Refazer ou mude o texto sobre a obra.");
+      return { status: "failed", detail: "rejected" };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Moves a post to another day and time. When that time already has a post of the same kind that
+ * did not go out, the two swap places.
+ */
+export function movePost(db: Executor, env: Env, content: ContentConfig, id: number, date: string | undefined, time: string | undefined, now = new Date()): void {
+  const post = getPost(db, id);
+  if (!post) throw new PanelInputError("Post não encontrado.");
+  if (LOCKED.includes(post.status)) throw new PanelInputError("Esse post já foi publicado.");
+  const at = requestedInstant(content, env.TIME_ZONE, date, time ?? TIME_OF(post.scheduledAt, env.TIME_ZONE), now);
+  if (at.getTime() === post.scheduledAt.getTime()) return;
+  const other = slotTaken(db, post.account, post.kind, at);
+  if (other && LOCKED.includes(other.status)) throw new PanelInputError("Esse horário já tem um post publicado. Escolha outro.");
+  const from = post.scheduledAt;
+  if (other) updatePost(db, other.id, { scheduledAt: new Date(-other.id) });
+  updatePost(db, post.id, { scheduledAt: at });
+  if (other) updatePost(db, other.id, { scheduledAt: from });
+  recordEvent(db, "content_moved", { postId: id, from: from.toISOString(), to: at.toISOString(), swappedWith: other?.id ?? null });
+}
+
+function TIME_OF(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
 }

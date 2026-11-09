@@ -4,7 +4,7 @@ import path from "node:path";
 import { chromium } from "playwright-core";
 import { findWebBrowser, WebBrowserUnavailableError } from "@/integrations/browser";
 import type { Env } from "@/lib/env";
-import type { CarouselScript, Slide } from "./ai";
+import type { CarouselScript, PhotoCarouselScript, PhotoSlide, Slide } from "./ai";
 import type { ContentConfig } from "./schedule";
 
 /**
@@ -156,6 +156,37 @@ export function carouselPages(brand: Brand, script: CarouselScript, outDir: stri
     else if (slide.kind === "quote") body = quoteSlide(brand, slide, photo ?? cover);
     else if (slide.kind === "cta") body = ctaSlide(brand, slide, FEED);
     else body = textSlide(brand, slide, index, total);
+    return { html: page(brand, FEED, body), file: path.join(outDir, `${String(index + 1).padStart(2, "0")}.jpg`), ...FEED };
+  });
+}
+
+/** A slide of the operator's photo, full bleed: tag in the corner, short text over a dark fade at the bottom. */
+function photoSlide(brand: Brand, slide: PhotoSlide, photo: string | null, index: number, total: number): string {
+  const bg = photo
+    ? `<div style="position:absolute;inset:0;background:url('${photo}') center/cover"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,${brand.background}99 0%,${brand.background}00 22%,${brand.background}00 50%,${brand.background}e6 80%,${brand.background} 100%)"></div>`
+    : `<div class="glow"></div>`;
+  const tag = slide.tag.trim()
+    ? `<div style="position:absolute;top:140px;left:80px;background:${/^antes$/i.test(slide.tag.trim()) ? brand.text : brand.accent};color:${brand.background};font-size:40px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:10px 26px;border-radius:10px">${escapeHtml(slide.tag.trim())}</div>`
+    : "";
+  return `<div class="slide">${bg}${topBar(brand, `${String(index + 1).padStart(2, "0")}/${String(total).padStart(2, "0")}`)}${tag}
+<div style="position:absolute;left:80px;right:80px;bottom:150px;display:flex;flex-direction:column">
+${slide.title ? `<h2 data-fit="36" style="font-size:64px;line-height:1.08;font-weight:800;letter-spacing:-.015em;max-height:290px;overflow:hidden">${escapeHtml(slide.title)}</h2>` : ""}
+${slide.body ? `<p data-fit="24" style="margin-top:22px;font-size:38px;line-height:1.32;font-weight:500;color:#E9E5E0;max-height:210px;overflow:hidden">${escapeHtml(slide.body)}</p>` : ""}
+</div>${footer(brand, index < total - 1)}</div>`;
+}
+
+/** Carousel built on the operator's photos (`photos[i]` is photo i + 1 of the script). */
+export function photoCarouselPages(brand: Brand, script: PhotoCarouselScript, outDir: string, photos: ReadonlyArray<string | null>): RenderPage[] {
+  const data = photos.map((file) => imageData(file));
+  const total = script.slides.length;
+  return script.slides.map((slide, index) => {
+    const photo = slide.photo ? (data[slide.photo - 1] ?? null) : null;
+    const plain: Slide = { kind: slide.kind === "photo" ? "text" : slide.kind, title: slide.title, body: slide.body, stepNumber: null };
+    let body: string;
+    if (slide.kind === "cover") body = coverSlide(brand, plain, photo, total);
+    else if (slide.kind === "photo") body = photoSlide(brand, slide, photo, index, total);
+    else if (slide.kind === "cta") body = ctaSlide(brand, plain, FEED);
+    else body = textSlide(brand, plain, index, total);
     return { html: page(brand, FEED, body), file: path.join(outDir, `${String(index + 1).padStart(2, "0")}.jpg`), ...FEED };
   });
 }
