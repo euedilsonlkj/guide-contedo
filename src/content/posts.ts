@@ -13,7 +13,7 @@ import type { Env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { DAY_MS, HOUR_MS, localClock, MINUTE_MS } from "@/lib/time";
 import { enqueueJob, type JobKind } from "@/core/queue";
-import { ContentRejectedError, finalCaption, formatOf, MAX_PHOTOS, planTopics, writePhotoPost, writePostScript, type CarouselScript, type EpisodeSummary, type PhotoCarouselScript, type PhotoReelScript, type RecentPost, type ReelScript } from "./ai";
+import { ContentRejectedError, ctaOf, finalCaption, formatOf, MAX_PHOTOS, planTopics, writePhotoPost, writePostScript, type CarouselScript, type EpisodeSummary, type PhotoCarouselScript, type PhotoReelScript, type RecentPost, type ReelScript } from "./ai";
 import { learnedFormats, learnedHookTypes, learnedPillars, measuredPosts, performanceBrief } from "./learning";
 import { absoluteFromRoot, mediaPath, ownerPhotos, postDir, publicBaseUrl, relativeToRoot, seriesDir, seriesPortrait } from "./files";
 import { carouselPages, photoCarouselPages, reelCoverPage, reelPages, renderPages, subtitleChunks } from "./render";
@@ -192,12 +192,13 @@ export async function runContentPlan(db: Executor, env: Env, config: BusinessCon
     return { ...slot, pillar: pillars[index], hookType: hookTypes[index], format: formats[index], episode: format?.episode ? (episode += 1) : null };
   });
   const topics = await planTopics(db, env, content, withPillars, recent, performanceBrief(measured));
+  const ctas = ctaMix(db, content, withPillars.length);
   let created = 0;
   withPillars.forEach((slot, index) => {
     const topic = topics[index];
     const row = db
       .insert(contentPosts)
-      .values({ account: content.account, kind: slot.kind, pillar: slot.pillar, hookType: slot.hookType, format: slot.format, episode: slot.episode, scheduledAt: slot.at, topic: topic.topic, angle: topic.angle, hook: topic.hook })
+      .values({ account: content.account, kind: slot.kind, pillar: slot.pillar, hookType: slot.hookType, format: slot.format, episode: slot.episode, scheduledAt: slot.at, topic: topic.topic, angle: topic.angle, hook: topic.hook, cta: ctas[index] })
       .onConflictDoNothing()
       .returning({ id: contentPosts.id })
       .get();
@@ -205,6 +206,64 @@ export async function runContentPlan(db: Executor, env: Env, config: BusinessCon
   });
   recordEvent(db, "content_planned", { created, slots: missing.length });
   return done(`planned ${created} posts`);
+}
+
+/**
+ * Which of the new planned posts end without a call to action (""), keeping the share of posts
+ * with it at config `ctaShare` over the last planned posts. null = the config's call to action.
+ */
+export function ctaMix(db: Executor, content: ContentConfig, count: number): Array<string | null> {
+  if (content.ctaShare >= 1) return Array.from({ length: count }, () => null);
+  const last = db
+    .select({ cta: contentPosts.cta })
+    .from(contentPosts)
+    .where(and(eq(contentPosts.account, content.account), eq(contentPosts.origin, "plan")))
+    .orderBy(desc(contentPosts.scheduledAt))
+    .limit(12)
+    .all();
+  let total = last.length;
+  let withCta = last.filter((row) => row.cta !== "").length;
+  return Array.from({ length: count }, () => {
+    const has = withCta / (total + 1) < content.ctaShare;
+    total += 1;
+    if (has) withCta += 1;
+    return has ? null : "";
+  });
+}
+
+/** Text of the badge on the last slide and the end of the Reel, matching the post's call to action. */
+export function ctaBadgeFor(content: ContentConfig, post: Pick<ContentPost, "cta">): string | null {
+  const cta = ctaOf(content, post);
+  if (cta === null) return null;
+  const whatsapp = content.brand.ctaBadge || `Chama no Direct ${content.brand.handle}`;
+  if (post.cta === null || post.cta === undefined) return whatsapp;
+  if (/direct|dm\b/i.test(cta)) return `Direct ${content.brand.handle}`;
+  if (/whats/i.test(cta)) return whatsapp;
+  return content.brand.handle;
+}
+
+/** Normalizes what the operator chose in the panel: "default" | "none" | custom text. */
+export function ctaFromPanel(mode: string | null | undefined, text: string | null | undefined): string | null {
+  if (mode === "none") return "";
+  if (mode === "custom") {
+    const value = (text ?? "").trim().slice(0, 400);
+    if (!value) throw new PanelInputError("Escreva a CTA ou escolha outra opção.");
+    return value;
+  }
+  return null;
+}
+
+/**
+ * Changes how a post ends. A post already written is written and drawn again with it (the topic,
+ * the photos and the day stay).
+ */
+export function setPostCta(db: Executor, id: number, cta: string | null): void {
+  const post = getPost(db, id);
+  if (!post) throw new PanelInputError("Post não encontrado.");
+  if (post.status === "published" || post.status === "publishing") throw new PanelInputError("Esse post já foi publicado.");
+  updatePost(db, id, { cta });
+  recordEvent(db, "content_cta_changed", { postId: id, cta: cta === null ? "padrão" : cta === "" ? "sem" : "personalizada" });
+  if (post.status !== "planned" && post.status !== "skipped") rewritePost(db, id);
 }
 
 // ---------------------------------------------------------------- write
@@ -503,7 +562,7 @@ export async function runContentRender(db: Executor, env: Env, config: BusinessC
   if (post.origin === "photos" && post.kind === "carousel") {
     const script = post.script as unknown as PhotoCarouselScript;
     const photos = (post.brief?.photos ?? []).map((photo) => existing(env, photo.file));
-    const files = await renderPages(env, photoCarouselPages(content.brand, script, postDir(env, post.id, "slides"), photos));
+    const files = await renderPages(env, photoCarouselPages(content.brand, script, postDir(env, post.id, "slides"), photos, ctaBadgeFor(content, post)));
     media.slides = files.map((file) => relativeToRoot(env, file));
   } else if (post.origin === "photos") {
     const script = photoReelAsStory(post.script as unknown as PhotoReelScript);
@@ -514,7 +573,7 @@ export async function runContentRender(db: Executor, env: Env, config: BusinessC
   } else if (post.kind === "carousel") {
     const script = post.script as unknown as CarouselScript;
     const dir = postDir(env, post.id, "slides");
-    const pages = carouselPages(content.brand, script, dir, { cover: existing(env, media.image), photo: existing(env, media.photo) });
+    const pages = carouselPages(content.brand, script, dir, { cover: existing(env, media.image), photo: existing(env, media.photo) }, ctaBadgeFor(content, post));
     const files = await renderPages(env, pages);
     media.slides = files.map((file) => relativeToRoot(env, file));
   } else {
@@ -547,10 +606,10 @@ async function narrate(db: Executor, env: Env, content: ContentConfig, post: Con
 }
 
 /** What the badge at the end of the Reel says: the next part of the novela, or the call to action. */
-export function reelEnding(content: ContentConfig, post: Pick<ContentPost, "format" | "episode">): string {
+export function reelEnding(content: ContentConfig, post: Pick<ContentPost, "format" | "episode" | "cta" | "origin">): string | null {
   const format = formatOf(content, post);
-  if (format.episode && post.episode) return `Parte ${post.episode + 1} em breve. Segue ${content.brand.handle}`;
-  return content.brand.ctaBadge || `Chama no Direct ${content.brand.handle}`;
+  if (post.origin !== "photos" && format.episode && post.episode) return `Parte ${post.episode + 1} em breve. Segue ${content.brand.handle}`;
+  return ctaBadgeFor(content, post);
 }
 
 /**
@@ -561,8 +620,9 @@ async function renderStoryReel(env: Env, content: ContentConfig, post: ContentPo
   const dir = postDir(env, post.id, "render");
   const chunks = script.scenes.map((scene) => subtitleChunks(scene.narration, 4));
   const tag = post.episode && formatOf(content, post).episode ? `Parte ${post.episode}` : null;
-  const pages = reelPages(content.brand, { hook: script.hook, tag, title: script.title ?? "", chunks, ending: reelEnding(content, post) }, dir);
-  await renderPages(env, [pages.hook, ...(script.title ? [pages.title] : []), ...pages.subtitles.flat(), pages.cta, pages.fallback]);
+  const ending = reelEnding(content, post);
+  const pages = reelPages(content.brand, { hook: script.hook, tag, title: script.title ?? "", chunks, ending: ending ?? "" }, dir);
+  await renderPages(env, [pages.hook, ...(script.title ? [pages.title] : []), ...pages.subtitles.flat(), ...(ending ? [pages.cta] : []), pages.fallback]);
   const portrait = existing(env, media.character) ?? pages.fallback.file;
   const scenes: StoryScene[] = [];
   for (let index = 0; index < script.scenes.length; index += 1) {
@@ -573,7 +633,7 @@ async function renderStoryReel(env: Env, content: ContentConfig, post: ContentPo
     const hookEnd = Math.min(2.2, length);
     if (script.title) overlays.unshift({ file: pages.title.file, start: index === 0 ? hookEnd : 0, end: length });
     if (index === 0) overlays.unshift({ file: pages.hook.file, start: 0, end: hookEnd });
-    if (index === script.scenes.length - 1) overlays.push({ file: pages.cta.file, start: Math.max(0, length - 2.6), end: length });
+    if (ending && index === script.scenes.length - 1) overlays.push({ file: pages.cta.file, start: Math.max(0, length - 2.6), end: length });
     const still = existing(env, media.stills?.[index]) ?? portrait;
     scenes.push({ clip: existing(env, media.clips?.[index]), still, narration, narrationSeconds: seconds, overlays });
   }
@@ -768,6 +828,8 @@ export interface PhotoPostRequest {
   kind: "carousel" | "reel";
   /** "next": next day with nothing scheduled; "date": the day and time given; "now": as soon as it is ready. */
   when: "next" | "date" | "now";
+  /** How it ends (see contentPosts.cta): null = the config's call to action, "" = none, text = custom. */
+  cta?: string | null;
   date?: string;
   time?: string;
   photos: SentPhoto[];
@@ -869,6 +931,7 @@ export function createPhotoPost(db: Executor, env: Env, content: ContentConfig, 
     media: {},
     error: null,
     attempts: 0,
+    cta: request.cta ?? null,
     brief: { type: type.key, note, photos: [] } as PhotoBrief,
   };
   const taken = slotTaken(db, content.account, request.kind, at);
@@ -922,7 +985,7 @@ async function writeFromPhotos(db: Executor, env: Env, content: ContentConfig, p
   }
   try {
     const recent = recentPosts(db, content.account).filter((item) => item.topic !== post.topic);
-    const written = await writePhotoPost(db, env, content, post.kind, { type, note: brief.note, labels: brief.photos.map((photo) => photo.label), images: (files as string[]).map(dataUrl) }, recent);
+    const written = await writePhotoPost(db, env, content, post.kind, { type, note: brief.note, labels: brief.photos.map((photo) => photo.label), images: (files as string[]).map(dataUrl), cta: ctaOf(content, post) }, recent);
     const media: ContentMedia = {};
     if (written.kind === "reel") media.stills = written.script.scenes.map((scene) => brief.photos[scene.photo - 1]?.file ?? brief.photos[0].file);
     updatePost(db, post.id, {

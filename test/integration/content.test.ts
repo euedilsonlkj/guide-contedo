@@ -11,7 +11,7 @@ import { alerts, contentPosts, geminiRuns, jobs, type ContentPost } from "@/db/s
 import { getSetting, setSetting } from "@/core/settings";
 import { absoluteFromRoot, verifyMediaToken } from "@/content/files";
 import { planContentWork } from "@/content/planner";
-import { attachSeriesPortrait, createPhotoPost, getPost, movePost, nextFreeDay, PanelInputError, runContentPlan, runContentWrite, updatePost, type SentPhoto } from "@/content/posts";
+import { attachSeriesPortrait, createPhotoPost, ctaBadgeFor, setPostCta, getPost, movePost, nextFreeDay, PanelInputError, runContentPlan, runContentWrite, updatePost, type SentPhoto } from "@/content/posts";
 import { localClock } from "@/lib/time";
 import { zonedInstant } from "@/content/schedule";
 import { claimNextJob, type Lane } from "@/core/queue";
@@ -413,6 +413,26 @@ describe("content arm", () => {
 
     await step(ctx, new Date());
     expect(getPost(ctx.db, post.id)?.status).toBe("published");
+  }, 120_000);
+
+  it("ends a post with the call to action the operator chose, or with none, and redoes it when it changes", async () => {
+    const ctx = context(createTestDb());
+    const custom = 'Manda "EU QUERO" no Direct que um dos nossos especialistas te chama.';
+    const post = createPhotoPost(ctx.db, ctx.env, ctx.config, { type: "obra_entregue", note: "", kind: "carousel", when: "now", cta: custom, photos: ownPhotos() });
+    await step(ctx, new Date());
+    expect(openai.requests.filter((item) => item.schema === "photo_carousel").at(-1)?.instructions).toContain(`CALL TO ACTION (end of this post): ${custom}`);
+    expect(ctaBadgeFor(ctx.config, getPost(ctx.db, post.id) as ContentPost)).toBe(`Direct ${ctx.config.brand.handle}`);
+
+    setPostCta(ctx.db, post.id, "");
+    expect(getPost(ctx.db, post.id)?.status).toBe("planned");
+    await step(ctx, new Date()); // written again
+    expect(openai.requests.filter((item) => item.schema === "photo_carousel").at(-1)?.instructions).toContain("This post has NO call to action");
+    await step(ctx, new Date()); // media_ready
+    await step(ctx, new Date()); // render
+    const ready = getPost(ctx.db, post.id) as ContentPost;
+    expect(ready.status).toBe("ready");
+    expect(ready.media.slides).toHaveLength(4); // cover + 3 photos, no cta slide
+    expect(ctaBadgeFor(ctx.config, ready)).toBeNull();
   }, 120_000);
 
   it("makes a narrated Reel from the photos even with the Reels of the plan turned off", async () => {

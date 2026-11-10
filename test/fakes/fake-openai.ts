@@ -90,13 +90,14 @@ function photoCount(instructions: string): number {
 
 function photoCarousel(instructions: string) {
   const count = photoCount(instructions);
+  const noCta = instructions.includes("This post has NO call to action");
   return {
     topic: "Antes e depois da varanda",
     hook: "A varanda mudou assim",
     slides: [
       { kind: "cover", photo: count, tag: "", title: "Do ferro ao vidro: a varanda mudou assim", body: "Arrasta para ver o antes" },
       ...Array.from({ length: count }, (_, index) => ({ kind: "photo", photo: index + 1, tag: index === 0 ? "ANTES" : "DEPOIS", title: `Foto ${index + 1}`, body: "O que mudou nesta parte da obra." })),
-      { kind: "cta", photo: null, tag: "", title: "Quer a sua assim?", body: "Chama no WhatsApp ou manda ORÇAMENTO no Direct." },
+      ...(noCta ? [] : [{ kind: "cta", photo: null, tag: "", title: "Quer a sua assim?", body: "Chama no WhatsApp ou manda ORÇAMENTO no Direct." }]),
     ],
     caption: "A varanda tinha guarda-corpo de ferro.\n\nChama no WhatsApp ou manda ORÇAMENTO no Direct.",
     hashtags: ["#guardacorpo", "#antesedepois"],

@@ -80,6 +80,21 @@ No painel, **+ Novo conteúdo com fotos**:
 O texto sai na hora e a arte em seguida; o post aparece no calendário com a prévia, e dá para
 Refazer, Trocar dia, Publicar agora ou Pular.
 
+## CTA de cada post
+
+Cada post termina de um destes jeitos:
+
+- **Padrão**: a chamada do config (`callToAction`), WhatsApp ou Direct.
+- **Escrever outra**: a CTA que você escrever para aquele post, por exemplo
+  `Manda "EU QUERO" no Direct que um dos nossos especialistas te chama`. As sugestões prontas
+  ficam em `ctaSuggestions` no config.
+- **Sem CTA**: o post termina no conteúdo, sem pedir nada (sem slide de CTA, nem na legenda).
+
+Você escolhe no **Novo conteúdo com fotos** (passo 5) ou em **Mudar a CTA** no post, pelo
+calendário. Se o post já estava escrito, o texto e a arte são refeitos com a CTA nova (mesmo tema,
+fotos e dia). Nos posts do plano, `ctaShare` decide quantos saem com CTA: na Guide é 0.66, ou seja,
+2 de cada 3; o terceiro sai sem.
+
 ## Calendário
 
 A página inicial do painel é o calendário do mês: cada dia com os posts (verde publicado,

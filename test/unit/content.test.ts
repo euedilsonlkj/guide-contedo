@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { checkContentText, finalCaption, setForbiddenTerms, validateCarousel, validateReel } from "@/content/ai";
+import { checkContentText, ctaOf, finalCaption, setForbiddenTerms, validateCarousel, validateReel } from "@/content/ai";
+import { ctaFromPanel, ctaMix, PanelInputError } from "@/content/posts";
+import { createTestDb } from "../helpers";
 import { getConfig, resetConfigCache } from "@/lib/config";
 import { FACEBOOK_GRAPH, graphBaseUrl, INSTAGRAM_GRAPH } from "@/integrations/instagram/publish";
 import { absoluteFromRoot, mediaPath, mediaToken, verifyMediaToken } from "@/content/files";
@@ -27,6 +29,19 @@ const content = {
   reelTime: "12:00",
   pillars,
 } as unknown as ContentConfig;
+
+function getConfigFor(file: string) {
+  const previous = process.env.CONTENT_CONFIG_PATH;
+  process.env.CONTENT_CONFIG_PATH = file;
+  resetConfigCache();
+  try {
+    return getConfig();
+  } finally {
+    if (previous === undefined) delete process.env.CONTENT_CONFIG_PATH;
+    else process.env.CONTENT_CONFIG_PATH = previous;
+    resetConfigCache();
+  }
+}
 
 describe("content schedule", () => {
   it("turns a local date and time in São Paulo into the right instant", () => {
@@ -66,6 +81,24 @@ describe("content text guard", () => {
     expect(checkContentText(["Organize o comercial, sem enrolação."])).toEqual([]);
     const problems = checkContentText(["Resultado — 30% a mais", "Teste grátis no link www.site.com.br", "R$ 99"]);
     expect(problems).toHaveLength(5);
+  });
+
+  it("lets each post end with the default call to action, its own or none", () => {
+    const content = { callToAction: "Chama no WhatsApp." };
+    expect(ctaOf(content, { cta: null })).toBe("Chama no WhatsApp.");
+    expect(ctaOf(content, { cta: "" })).toBeNull();
+    expect(ctaOf(content, { cta: "Manda EU QUERO no Direct." })).toBe("Manda EU QUERO no Direct.");
+    expect(ctaFromPanel("none", "x")).toBe("");
+    expect(ctaFromPanel("default", "x")).toBeNull();
+    expect(ctaFromPanel("custom", "  Manda MURO no Direct  ")).toBe("Manda MURO no Direct");
+    expect(() => ctaFromPanel("custom", " ")).toThrow(PanelInputError);
+    const config = getConfigFor("config/conteudo.json");
+    expect(ctaMix(createTestDb(), config, 6)).toEqual([null, null, "", null, null, ""]);
+    expect(ctaMix(createTestDb(), { ...config, ctaShare: 1 }, 3)).toEqual([null, null, null]);
+    const noCta = { hook: "", caption: "", hashtags: [], imagePrompt: "", slides: ["cover", "text", "text", "text"].map((kind) => ({ kind, title: "t", body: "b", stepNumber: null })) };
+    const pillar = { key: "p", name: "p", description: "d", kinds: ["carousel"], weight: 1, usesOwnerPhoto: false };
+    expect(validateCarousel(noCta as never, pillar as never, false)).toEqual([]);
+    expect(validateCarousel(noCta as never, pillar as never, true).join()).toContain("last slide must be");
   });
 
   it("allows glass words and blocks the config's forbidden terms", () => {

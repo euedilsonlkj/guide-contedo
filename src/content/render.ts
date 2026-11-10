@@ -157,13 +157,14 @@ function quoteSlide(brand: Brand, slide: Slide, photo: string | null): string {
 </div>${footer(brand, true)}</div>`;
 }
 
-function ctaSlide(brand: Brand, slide: Slide, size: { width: number; height: number }): string {
+function ctaSlide(brand: Brand, slide: Slide, size: { width: number; height: number }, badge?: string | null): string {
+  const text = badge === undefined ? brand.ctaBadge || `Chama no Direct ${brand.handle}` : badge;
   return `<div class="slide" style="background:${brand.accent};color:${brand.background}">
 <div class="top" style="color:${brand.background}"><div class="mark"><span class="dot" style="background:${brand.background}"></span>${escapeHtml(brand.wordmark)}</div></div>
 <div style="position:absolute;left:80px;right:80px;top:${size.height > 1500 ? 420 : 240}px;bottom:${size.height > 1500 ? 420 : 240}px;display:flex;flex-direction:column;justify-content:center">
 <h2 data-fit="48" style="font-size:96px;line-height:1.02;font-weight:900;letter-spacing:-.02em;max-height:${size.height > 1500 ? 700 : 520}px;overflow:hidden">${escapeHtml(slide.title)}</h2>
 <p data-fit="26" style="margin-top:36px;font-size:42px;line-height:1.35;font-weight:600;max-height:240px;overflow:hidden">${escapeHtml(slide.body)}</p>
-<div style="margin-top:56px;align-self:flex-start;padding:22px 34px;border-radius:999px;background:${brand.background};color:${brand.text};font-size:32px;font-weight:800">${escapeHtml(brand.ctaBadge || `Chama no Direct ${brand.handle}`)}</div>
+${text ? `<div style="margin-top:56px;align-self:flex-start;padding:22px 34px;border-radius:999px;background:${brand.background};color:${brand.text};font-size:32px;font-weight:800">${escapeHtml(text)}</div>` : ""}
 </div></div>`;
 }
 
@@ -176,7 +177,7 @@ export interface RenderPage {
   transparent?: boolean;
 }
 
-export function carouselPages(brand: Brand, script: CarouselScript, outDir: string, images: { cover: string | null; photo: string | null }): RenderPage[] {
+export function carouselPages(brand: Brand, script: CarouselScript, outDir: string, images: { cover: string | null; photo: string | null }, badge?: string | null): RenderPage[] {
   const cover = imageData(images.cover);
   const photo = imageData(images.photo);
   const total = script.slides.length;
@@ -184,7 +185,7 @@ export function carouselPages(brand: Brand, script: CarouselScript, outDir: stri
     let body: string;
     if (slide.kind === "cover") body = coverSlide(brand, slide, cover, total);
     else if (slide.kind === "quote") body = quoteSlide(brand, slide, photo ?? cover);
-    else if (slide.kind === "cta") body = ctaSlide(brand, slide, FEED);
+    else if (slide.kind === "cta") body = ctaSlide(brand, slide, FEED, badge);
     else body = textSlide(brand, slide, index, total);
     return { html: page(brand, FEED, body), file: path.join(outDir, `${String(index + 1).padStart(2, "0")}.jpg`), ...FEED };
   });
@@ -206,7 +207,7 @@ ${slide.body ? `<p data-fit="24" style="margin-top:22px;font-size:38px;line-heig
 }
 
 /** Carousel built on the operator's photos (`photos[i]` is photo i + 1 of the script). */
-export function photoCarouselPages(brand: Brand, script: PhotoCarouselScript, outDir: string, photos: ReadonlyArray<string | null>): RenderPage[] {
+export function photoCarouselPages(brand: Brand, script: PhotoCarouselScript, outDir: string, photos: ReadonlyArray<string | null>, badge?: string | null): RenderPage[] {
   const data = photos.map((file) => imageData(file));
   const total = script.slides.length;
   return script.slides.map((slide, index) => {
@@ -215,7 +216,7 @@ export function photoCarouselPages(brand: Brand, script: PhotoCarouselScript, ou
     let body: string;
     if (slide.kind === "cover") body = coverSlide(brand, plain, photo, total);
     else if (slide.kind === "photo") body = photoSlide(brand, slide, photo, index, total);
-    else if (slide.kind === "cta") body = ctaSlide(brand, plain, FEED);
+    else if (slide.kind === "cta") body = ctaSlide(brand, plain, FEED, badge);
     else body = textSlide(brand, plain, index, total);
     return { html: page(brand, FEED, body), file: path.join(outDir, `${String(index + 1).padStart(2, "0")}.jpg`), ...FEED };
   });

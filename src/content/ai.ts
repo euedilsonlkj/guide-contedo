@@ -49,12 +49,20 @@ export function checkContentText(texts: readonly string[]): string[] {
 
 // ---------------------------------------------------------------- context
 
-function brief(content: ContentConfig): string {
+/** The call to action of a post: the config's, the one the operator wrote for it, or none (null). */
+export function ctaOf(content: Pick<ContentConfig, "callToAction">, post: { cta?: string | null }): string | null {
+  if (post.cta === null || post.cta === undefined) return content.callToAction;
+  return post.cta.trim() || null;
+}
+
+const NO_CTA = "NONE. This post has NO call to action: no cta slide, nothing asking to send a message, call, comment or order, neither in the slides, the narration nor the caption. It ends on the content itself (the last idea, the lesson or the result).";
+
+function brief(content: ContentConfig, cta: string | null = content.callToAction): string {
   setForbiddenTerms(content.forbiddenTerms);
   return [
     `VOICE: ${content.voice}`,
     `AUDIENCE: ${content.audience}`,
-    `CALL TO ACTION (end of every post): ${content.callToAction}`,
+    `CALL TO ACTION (end of this post): ${cta ?? NO_CTA}`,
     `FACTS you may state about the company and the owner (nothing else about them):\n${content.facts.map((fact) => `- ${fact}`).join("\n") || "- (none)"}`,
     `OPERATOR RULES:\n${content.rules.map((rule) => `- ${rule}`).join("\n") || "- (none)"}`,
   ].join("\n\n");
@@ -174,14 +182,15 @@ const carouselSchema = z.object({
 export type CarouselScript = z.infer<typeof carouselSchema>;
 export type Slide = CarouselScript["slides"][number];
 
-export function validateCarousel(script: CarouselScript, pillar: Pillar): string[] {
+export function validateCarousel(script: CarouselScript, pillar: Pillar, hasCta = true): string[] {
   const problems: string[] = [];
   const slides = script.slides;
-  const min = pillar.usesOwnerPhoto ? 2 : 5;
+  const min = pillar.usesOwnerPhoto ? 2 : hasCta ? 5 : 4;
   const max = pillar.usesOwnerPhoto ? 2 : 8;
   if (slides.length < min || slides.length > max) problems.push(`must have ${min === max ? min : `${min} to ${max}`} slides, has ${slides.length}`);
   if (slides[0]?.kind !== (pillar.usesOwnerPhoto ? "quote" : "cover")) problems.push(`first slide must be "${pillar.usesOwnerPhoto ? "quote" : "cover"}"`);
-  if (slides.at(-1)?.kind !== "cta") problems.push('last slide must be "cta"');
+  if (hasCta && slides.at(-1)?.kind !== "cta") problems.push('last slide must be "cta"');
+  if (!hasCta && slides.some((slide) => slide.kind === "cta")) problems.push('this post has no call to action: no slide of kind "cta"');
   slides.forEach((slide, index) => {
     if (slide.title.length > 80) problems.push(`slide ${index + 1} title over 80 characters`);
     if (slide.body.length > 240) problems.push(`slide ${index + 1} body over 240 characters`);
@@ -335,9 +344,10 @@ export async function writePostScript(
   recent: readonly RecentPost[],
   episodes: readonly EpisodeSummary[] = [],
 ): Promise<WrittenPost> {
+  const cta = ctaOf(content, post);
   const common = `${HARD_RULES}
 
-${brief(content)}
+${brief(content, cta)}
 
 PILLAR: ${pillarLine(pillar)}
 ${hookTypeOf(content, post) ? `HOOK TYPE: ${hookLine(hookTypeOf(content, post) as HookType)}\nThe hook (and, in a Reel, the first spoken sentence) must follow this hook type.` : ""}
@@ -349,13 +359,13 @@ RECENT POSTS (do not repeat):
 ${recent.map((item) => `- ${item.topic}`).join("\n") || "- (none)"}`;
 
   const carouselInstructions = pillar.usesOwnerPhoto
-    ? `You write an Instagram carousel of exactly 2 slides. Slide 1 (kind "quote"): title is one strong, short sentence (at most 80 characters) and body is only the signature "${content.quoteSignature || content.brand.wordmark}". Slide 2 (kind "cta"): title with the call to action and body with one short supporting line. imagePrompt: write "owner photo".
-Caption: 3 to 6 short paragraphs that develop the sentence, then the call to action. hashtags: 3 to 6 (with "#").`
-    : `You write an Instagram carousel of 5 to 7 slides.
+    ? `You write an Instagram carousel of exactly 2 slides. Slide 1 (kind "quote"): title is one strong, short sentence (at most 80 characters) and body is only the signature "${content.quoteSignature || content.brand.wordmark}". ${cta ? 'Slide 2 (kind "cta"): title with the call to action and body with one short supporting line.' : 'Slide 2 (kind "text"): title develops the sentence in a few words, body 1 to 3 short sentences that close the thought.'} imagePrompt: write "owner photo".
+Caption: 3 to 6 short paragraphs that develop the sentence${cta ? ", then the call to action" : ""}. hashtags: 3 to 6 (with "#").`
+    : `You write an Instagram carousel of ${cta ? "5 to 7" : "4 to 6"} slides.
 Slide 1 kind "cover": title is the hook (at most 70 characters), body is a short subtitle (at most 90 characters).
 Middle slides: kind "step" (with stepNumber 1, 2, 3...) for tutorials in steps, otherwise kind "text". Title at most 60 characters, body 1 to 3 short sentences (at most 220 characters). One idea per slide, concrete and practical for the AUDIENCE.
-Last slide kind "cta": title with the call to action, body one short supporting line.
-Caption: starts with the hook in other words, develops in short paragraphs, ends with the call to action. hashtags: 3 to 6 (with "#").
+${cta ? 'Last slide kind "cta": title with the call to action, body one short supporting line.' : "No cta slide: the last slide closes with the main lesson."}
+Caption: starts with the hook in other words, develops in short paragraphs, ${cta ? "ends with the call to action" : "ends with the main lesson (no call to action)"}. hashtags: 3 to 6 (with "#").
 imagePrompt: in English, a realistic photo for the cover background that fits the topic, following this style: ${content.imageStyle}. Vertical 4:5. No text, no letters, no logos.`;
 
   const format = formatOf(content, post);
@@ -368,7 +378,7 @@ What each scene does: ${format.structure}
 ${format.episode ? `This is PARTE ${post.episode ?? 1} of the series "${content.series.name}".
 PREVIOUS EPISODES (continue from them, never repeat a situation):
 ${episodeLines}
-It must work for someone who never saw the other parts (half a sentence of recap at most) and END ON A CLIFFHANGER: the last sentence opens a question that only the next part answers (what the customer replied, whether he closes, what the competitor did). Never resolve it in this part. No call to action in the narration: the caption carries it.` : `The last scene ends with the call to action: exactly what to do and what the person gets (CALL TO ACTION), in one short sentence.`}
+It must work for someone who never saw the other parts (half a sentence of recap at most) and END ON A CLIFFHANGER: the last sentence opens a question that only the next part answers (what the customer replied, whether he closes, what the competitor did). Never resolve it in this part. No call to action in the narration: the caption carries it.` : cta ? `The last scene ends with the call to action: exactly what to do and what the person gets (CALL TO ACTION), in one short sentence.` : "The last scene ends on the lesson, with no call to action."}
 
 ${seriesBrief(content)}
 ${character.name} is in every scene (he is the person in the reference image). Other people of the premise may appear. It is an illustrative case with invented people: never say it is a real customer or company. Never prices, percentages, statistics or claims about the company beyond FACTS.
@@ -385,7 +395,7 @@ scenes: exactly ${format.scenes}. For each one:
   narration: Portuguese, ${SCENE_WORDS.min} to ${SCENE_WORDS.max} words.
 summary: one sentence in Portuguese of what happened in this video${format.episode ? " and where the cliffhanger left it" : ""}.
 shareReason: one line on why someone of the AUDIENCE would send this Reel to a person they know.
-caption: first line makes people open it${format.episode ? ` (start with "${content.series.name}, parte ${post.episode ?? 1}.")` : ""}, then the lesson in 2 or 3 short paragraphs, then the call to action. hashtags: 3 to 6 (with "#").`;
+caption: first line makes people open it${format.episode ? ` (start with "${content.series.name}, parte ${post.episode ?? 1}.")` : ""}, then the lesson in 2 or 3 short paragraphs${cta ? ", then the call to action" : ""}. hashtags: 3 to 6 (with "#").`;
 
   let feedback = "";
   let problems: string[] = [];
@@ -401,7 +411,7 @@ caption: first line makes people open it${format.episode ? ` (start with "${cont
         maxOutputTokens: 6000,
       });
       problems = [
-        ...validateCarousel(script, pillar),
+        ...validateCarousel(script, pillar, cta !== null),
         ...checkContentText([script.hook, script.caption, ...script.slides.flatMap((slide) => [slide.title, slide.body])]),
       ];
       if (problems.length === 0) return { kind: "carousel", script };
@@ -487,12 +497,14 @@ export type PhotoReelScript = z.infer<typeof photoReelSchema>;
 export const MAX_PHOTOS = 8;
 export const PHOTO_REEL_WORDS = { min: 10, max: 24, total: 100 };
 
-export function validatePhotoCarousel(script: PhotoCarouselScript, photoCount: number): string[] {
+export function validatePhotoCarousel(script: PhotoCarouselScript, photoCount: number, hasCta = true): string[] {
   const problems: string[] = [];
   const slides = script.slides;
-  if (slides.length < 3 || slides.length > 10) problems.push(`must have 3 to 10 slides, has ${slides.length}`);
+  const min = hasCta ? 3 : 2;
+  if (slides.length < min || slides.length > 10) problems.push(`must have ${min} to 10 slides, has ${slides.length}`);
   if (slides[0]?.kind !== "cover") problems.push('first slide must be "cover"');
-  if (slides.at(-1)?.kind !== "cta") problems.push('last slide must be "cta"');
+  if (hasCta && slides.at(-1)?.kind !== "cta") problems.push('last slide must be "cta"');
+  if (!hasCta && slides.some((slide) => slide.kind === "cta")) problems.push('this post has no call to action: no slide of kind "cta"');
   const used = new Set<number>();
   slides.forEach((slide, index) => {
     const n = index + 1;
@@ -534,6 +546,8 @@ export interface PhotoInput {
   labels: string[];
   /** The photos themselves (data: URLs), so the model sees them. */
   images: string[];
+  /** Call to action of this post (null: none). */
+  cta: string | null;
 }
 
 export type WrittenPhotoPost = { kind: "carousel"; script: PhotoCarouselScript } | { kind: "reel"; script: PhotoReelScript };
@@ -546,7 +560,7 @@ export async function writePhotoPost(db: Executor, env: Env, content: ContentCon
   const photoList = input.labels.map((label, index) => `Foto ${index + 1}${label ? ` (${label})` : ""}`).join("\n");
   const common = `${HARD_RULES}
 
-${brief(content)}
+${brief(content, input.cta)}
 
 The post is made with the company's OWN PHOTOS of a real job, attached in this order:
 ${photoList}
@@ -565,13 +579,13 @@ ${recent.map((item) => `- ${item.topic}${item.hook ? ` | ${item.hook}` : ""}`).j
 Slide 1 kind "cover": photo = the most impressive photo (usually an "after" one), title is the hook (at most 70 characters), body a short subtitle (at most 90 characters) or "".
 Then kind "photo" slides: one photo each, in an order that tells the story (for before and after, alternate or pair them so the change is obvious). tag: a short word in capitals for the corner (ANTES, DEPOIS, DETALHE, or another short one that fits) or "". title: at most 60 characters, body: one short sentence (at most 150 characters) about what this photo shows. Every photo must appear at least once (the cover counts).
 Optionally one kind "text" slide (photo null) with a useful explanation for the AUDIENCE.
-Last slide kind "cta" (photo null): title with the call to action, body one short supporting line. tag "" on cover, text and cta.
-At most 10 slides. Caption: starts with the hook in other words, tells the story of the job in short paragraphs, ends with the call to action. hashtags: 3 to 6 (with "#").`;
+${input.cta ? 'Last slide kind "cta" (photo null): title with the call to action, body one short supporting line. tag "" on cover, text and cta.' : 'No cta slide: the post ends on the last photo (or a "text" slide) with the result. tag "" on cover and text.'}
+At most 10 slides. Caption: starts with the hook in other words, tells the story of the job in short paragraphs, ${input.cta ? "ends with the call to action" : "ends with the result (no call to action)"}. hashtags: 3 to 6 (with "#").`;
 
   const reelInstructions = `You write a short narrated Instagram Reel of 15 to 40 seconds made only of the photos above: each scene shows one photo with a slow zoom while the narrator speaks, with subtitles.
 2 to 6 scenes, in an order that tells the story (for before and after: first the before, then the after). Every scene: photo (its number) and narration in Brazilian Portuguese, ${PHOTO_REEL_WORDS.min} to ${PHOTO_REEL_WORDS.max} words, at most ${PHOTO_REEL_WORDS.total} in total. The first spoken words already carry the hook. Short sentences, present tense, no filler.
 hook: big text on screen in the first 2 seconds and on the cover (at most 45 characters). title: header on top (at most 36 characters).
-The last scene ends with the call to action in one short sentence. Caption: first line makes people open it, then the story in 2 or 3 short paragraphs, then the call to action. hashtags: 3 to 6 (with "#").`;
+${input.cta ? "The last scene ends with the call to action in one short sentence." : "The last scene ends on the result, with no call to action."} Caption: first line makes people open it, then the story in 2 or 3 short paragraphs${input.cta ? ", then the call to action" : ""}. hashtags: 3 to 6 (with "#").`;
 
   let feedback = "";
   let problems: string[] = [];
@@ -587,7 +601,7 @@ The last scene ends with the call to action in one short sentence. Caption: firs
         maxOutputTokens: 6000,
       });
       problems = [
-        ...validatePhotoCarousel(script, input.images.length),
+        ...validatePhotoCarousel(script, input.images.length, input.cta !== null),
         ...checkContentText([script.topic, script.hook, script.caption, ...script.slides.flatMap((slide) => [slide.title, slide.body, slide.tag])]),
       ];
       if (problems.length === 0) return { kind, script };

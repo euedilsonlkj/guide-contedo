@@ -171,6 +171,11 @@ export const contentPosts = sqliteTable(
     origin: text("origin", { enum: CONTENT_ORIGINS }).notNull().default("plan"),
     /** Photo post: the photos and what the operator said about them. */
     brief: json<PhotoBrief>("brief"),
+    /**
+     * How the post ends: null = the config's call to action, "" = no call to action, any other
+     * text = the call to action the operator wrote for this post.
+     */
+    cta: text("cta"),
     topic: text("topic").notNull(),
     angle: text("angle"),
     hook: text("hook"),

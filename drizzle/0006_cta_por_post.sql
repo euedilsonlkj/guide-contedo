@@ -1,0 +1,1 @@
+ALTER TABLE `content_posts` ADD `cta` text;

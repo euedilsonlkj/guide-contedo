@@ -106,6 +106,13 @@ const contentSchema = z
     audience: z.string().min(1),
     /** What every post ends asking for (e.g. send a DM with a word). */
     callToAction: z.string().min(1),
+    /**
+     * Share of the planned posts that end with the call to action (1 = all). The rest end on the
+     * content itself, so the feed does not sell in every post. Each post can be changed in the panel.
+     */
+    ctaShare: z.number().min(0).max(1).default(1),
+    /** Ready calls to action the operator can pick in the panel for one post. */
+    ctaSuggestions: textList.default([]),
     /** Rules in the operator's words (vocabulary, things never to say). */
     rules: textList.default([]),
     /** The only facts about the company and the owner the posts may state. */

@@ -6,7 +6,7 @@ import type { Db } from "@/db/client";
 import { alerts, contentPosts, type ContentPost } from "@/db/schema";
 import { acknowledgeAlert } from "@/core/journal";
 import { absoluteFromRoot, contentTypeOf, mediaExists, mediaPath, ownerPhotos, publicBaseUrl, verifyMediaToken } from "@/content/files";
-import { contentPaused, createPhotoPost, geminiAccounts, geminiBlockedUntil, geminiDownUntil, geminiUsedToday, markPublished, movePost, nextFreeDay, PanelInputError, pillarOf, postsBetween, publishNow, retryPost, rewritePost, setContentPaused, skipPost, type SentPhoto } from "@/content/posts";
+import { contentPaused, createPhotoPost, ctaFromPanel, setPostCta, geminiAccounts, geminiBlockedUntil, geminiDownUntil, geminiUsedToday, markPublished, movePost, nextFreeDay, PanelInputError, pillarOf, postsBetween, publishNow, retryPost, rewritePost, setContentPaused, skipPost, type SentPhoto } from "@/content/posts";
 import { MAX_PHOTOS } from "@/content/ai";
 import { zonedInstant } from "@/content/schedule";
 import { escapeHtml as esc } from "@/content/render";
@@ -107,6 +107,7 @@ function act(ctx: PanelContext, form: URLSearchParams): string | null {
     else if (action === "publish") publishNow(ctx.db, id);
     else if (action === "published") markPublished(ctx.db, id);
     else if (action === "move") movePost(ctx.db, ctx.env, ctx.config, id, form.get("date") ?? undefined, form.get("time") || undefined);
+    else if (action === "cta") setPostCta(ctx.db, id, ctaFromPanel(form.get("ctaMode"), form.get("ctaText")));
   } catch (error) {
     if (error instanceof PanelInputError) return error.message;
     throw error;
@@ -127,6 +128,38 @@ const TIME = (tz: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: tz, ho
 
 function button(postId: number, action: string, label: string, confirm?: string, back = "/"): string {
   return `<form method="post" action="/acao"${confirm ? ` onsubmit="return confirm('${esc(confirm)}')"` : ""}><input type="hidden" name="postId" value="${postId}"><input type="hidden" name="action" value="${action}"><input type="hidden" name="back" value="${esc(back)}"><button class="small">${esc(label)}</button></form>`;
+}
+
+/** The three ways a post can end, as radio buttons, plus the text box and the ready suggestions. */
+function ctaFields(ctx: PanelContext, current: string | null, id: string): string {
+  const mode = current === null ? "default" : current === "" ? "none" : "custom";
+  const option = (value: string, label: string) => `<label class="pick"><input type="radio" name="ctaMode" value="${value}"${mode === value ? " checked" : ""} data-cta="${id}"><span>${esc(label)}</span></label>`;
+  const suggestions = ctx.config.ctaSuggestions
+    .map((text) => `<button type="button" class="small suggestion" data-cta-fill="${id}" data-text="${esc(text)}">${esc(text)}</button>`)
+    .join("");
+  return `<div class="picks">${option("default", "Padrão: WhatsApp ou Direct")}${option("custom", "Escrever outra")}${option("none", "Sem CTA")}</div>
+<div class="cta-custom${mode === "custom" ? " on" : ""}" id="cta-${id}"><textarea name="ctaText" maxlength="400" rows="3" placeholder="Ex.: Manda EU QUERO no Direct que um dos nossos especialistas te chama.">${mode === "custom" ? esc(current as string) : ""}</textarea>${suggestions ? `<div class="suggestions">${suggestions}</div>` : ""}</div>`;
+}
+
+/** Shows the text box only on "Escrever outra" and fills it from a suggestion. */
+const CTA_SCRIPT = `<script>
+document.addEventListener('change', (event) => {
+  const id = event.target.dataset && event.target.dataset.cta;
+  if (id) document.getElementById('cta-' + id).classList.toggle('on', event.target.value === 'custom');
+});
+document.addEventListener('click', (event) => {
+  const id = event.target.dataset && event.target.dataset.ctaFill;
+  if (!id) return;
+  const box = document.getElementById('cta-' + id);
+  box.querySelector('textarea').value = event.target.dataset.text;
+  box.querySelector('textarea').focus();
+});
+</script>`;
+
+function ctaLabel(cta: string | null): string {
+  if (cta === null) return "CTA padrão";
+  if (cta === "") return "Sem CTA";
+  return `CTA: ${cta.length > 60 ? `${cta.slice(0, 57)}...` : cta}`;
 }
 
 const HHMM = (at: Date, tz: string) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
@@ -162,7 +195,7 @@ function postCard(ctx: PanelContext, post: ContentPost, back = "/"): string {
   return `<section class="card">
 <div class="row"><div class="grow">
 <div class="tags"><b class="cap">${esc(WEEKDAY(ctx.env.TIME_ZONE).format(post.scheduledAt))}</b> <span class="muted">${esc(TIME(ctx.env.TIME_ZONE).format(post.scheduledAt))}</span>
-<span class="badge accent">${post.kind === "reel" ? "Reel" : "Carrossel"}</span>${post.origin === "photos" ? '<span class="badge photo">Com suas fotos</span>' : ""}${formatLabel ? `<span class="badge accent">${esc(formatLabel)}</span>` : ""}<span class="badge">${esc(pillar)}</span>${hookName ? `<span class="badge">gancho: ${esc(hookName)}</span>` : ""}<span class="badge ${status.tone}">${esc(status.label)}</span></div>
+<span class="badge accent">${post.kind === "reel" ? "Reel" : "Carrossel"}</span>${post.origin === "photos" ? '<span class="badge photo">Com suas fotos</span>' : ""}<span class="badge">${esc(ctaLabel(post.cta))}</span>${formatLabel ? `<span class="badge accent">${esc(formatLabel)}</span>` : ""}<span class="badge">${esc(pillar)}</span>${hookName ? `<span class="badge">gancho: ${esc(hookName)}</span>` : ""}<span class="badge ${status.tone}">${esc(status.label)}</span></div>
 <p class="hook">${esc(post.hook ?? post.topic)}</p><p class="muted">${esc(post.topic)}</p>
 ${post.error ? `<p class="bad">${esc(post.error)}</p>` : ""}
 ${post.permalink ? `<a href="${esc(post.permalink)}" target="_blank" class="link">Ver no Instagram</a>` : ""}
@@ -171,6 +204,11 @@ ${post.metrics ? `<p class="muted">${[["visualizações", post.metrics.views ?? 
 ${preview(ctx, post)}
 ${post.caption && open ? `<details><summary class="muted">Legenda</summary><p class="caption">${esc(post.caption)}</p></details>` : ""}
 ${post.origin === "photos" && post.brief?.note ? `<details><summary class="muted">O que você escreveu</summary><p class="caption">${esc(post.brief.note)}</p></details>` : ""}
+${
+  open
+    ? `<details class="move"><summary class="muted">Mudar a CTA</summary><form method="post" action="/acao" class="cta-form"><input type="hidden" name="postId" value="${post.id}"><input type="hidden" name="action" value="cta"><input type="hidden" name="back" value="${esc(back)}">${ctaFields(ctx, post.cta, `p${post.id}`)}<button class="small">Salvar CTA</button></form><p class="muted small-text">${post.status === "planned" ? "Vale quando o post for escrito." : "O texto e a arte deste post são refeitos com a nova CTA (mesmo tema, fotos e dia)."}</p></details>`
+    : ""
+}
 ${
   open || post.status === "skipped"
     ? `<details class="move"><summary class="muted">Trocar dia</summary><form method="post" action="/acao" class="row move-form"><input type="hidden" name="postId" value="${post.id}"><input type="hidden" name="action" value="move"><input type="hidden" name="back" value="${esc(back)}"><label>Dia <input type="date" name="date" required value="${localClock(post.scheduledAt, ctx.env.TIME_ZONE).dateKey}"></label><label>Horário <input type="time" name="time" required value="${HHMM(post.scheduledAt, ctx.env.TIME_ZONE)}"></label><button class="small">Mover</button></form><p class="muted small-text">Se o novo horário já tiver um post do mesmo tipo, os dois trocam de lugar.</p></details>`
@@ -209,6 +247,9 @@ a.add{display:block;margin-top:10px;padding:11px;border-radius:8px;border:1px da
 .mini-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.mini-stats b{display:block;font-size:22px}.mini-stats span{font-size:12px}
 .move-form{align-items:flex-end;margin-top:8px}.move-form label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:4px}
 input,textarea,select{font:inherit;color:var(--text);background:#0f0c0a;border:1px solid var(--line);border-radius:8px;padding:8px 10px}input[type=date],input[type=time]{color-scheme:dark}
+.picks{display:flex;flex-wrap:wrap;gap:8px}.pick{position:relative}.pick input{position:absolute;opacity:0;pointer-events:none}.pick span{display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;border-radius:999px;border:1px solid var(--line);background:var(--raised);font-weight:600;font-size:14px;cursor:pointer}
+.pick input:checked+span{border-color:var(--accent);background:#2a1d14;color:var(--accent)}.pick input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.cta-custom{display:none;margin-top:10px}.cta-custom.on{display:block}.cta-custom textarea{width:100%;min-height:110px}.suggestions{display:flex;flex-direction:column;gap:6px;margin-top:8px}.suggestions button{text-align:left;font-weight:500;white-space:normal}.cta-form{display:flex;flex-direction:column;gap:10px;margin-top:8px}.cta-form>button{align-self:flex-start}
 figure.own{margin:0;position:relative;flex:none}figure.own img{width:110px}figure.own figcaption{position:absolute;left:6px;top:6px;background:var(--accent);color:#0b0906;font-size:11px;font-weight:800;text-transform:uppercase;padding:2px 6px;border-radius:4px}`;
 
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -331,6 +372,9 @@ textarea{width:100%;min-height:110px;resize:vertical}.when-date{display:none;gap
 <div class="picks" style="margin-top:10px">${chip("when", "next", `Próximo dia livre: ${freeLabel}`, !day)}${chip("when", "date", "Escolher o dia", Boolean(day))}${chip("when", "now", "Publicar assim que ficar pronto", false)}</div>
 <div class="when-date${day ? " on" : ""}" id="whenDate"><label>Dia<input type="date" id="date" min="${today}" value="${day || today}"></label><label>Horário<input type="time" id="time" value="${esc(config.carouselTime)}"></label></div>
 <p class="muted small-text">Se o dia escolhido já tiver um post planejado nesse horário, as suas fotos entram no lugar dele.</p></section>
+<section class="card"><div class="step"><b>5</b><h2>Chamada no final (CTA)</h2></div>
+${ctaFields(ctx, null, "novo")}
+<p class="muted small-text">Sem CTA, o post termina no resultado da obra, sem pedir nada.</p></section>
 <p id="msg" class="bad" role="alert"></p>
 <div class="send"><span class="muted small-text">Fica pronto em poucos minutos e aparece no calendário.</span><button type="submit" class="primary" id="go">Gerar conteúdo</button></div>
 </form></main>
@@ -415,6 +459,7 @@ document.getElementById('novo').addEventListener('submit', async (event) => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         type: value('type'), note: document.getElementById('note').value, kind, when: value('when'),
+        ctaMode: value('ctaMode'), ctaText: document.querySelector('#cta-novo textarea').value,
         date: document.getElementById('date').value, time: document.getElementById('time').value,
         photos: photos.map((photo) => ({ data: photo.data.split(',')[1], label: photo.label })),
       }),
@@ -427,7 +472,7 @@ document.getElementById('novo').addEventListener('submit', async (event) => {
     go.disabled = false; go.textContent = 'Gerar conteúdo';
   }
 });
-</script></body></html>`;
+</script>${CTA_SCRIPT}</body></html>`;
 }
 
 /** Receives the form of /novo (JSON with the photos in base64) and creates the post. */
@@ -446,7 +491,8 @@ export function receivePhotoPost(ctx: PanelContext, raw: string | null, now = ne
     return { data: Buffer.from(text(photo.data), "base64"), label: (PHOTO_LABELS as readonly string[]).includes(label) ? label : "" };
   });
   try {
-    const post = createPhotoPost(ctx.db, ctx.env, ctx.config, { type: text(data.type), note: text(data.note), kind: text(data.kind) as "carousel" | "reel", when: (["next", "date", "now"].includes(text(data.when)) ? text(data.when) : "next") as "next" | "date" | "now", date: text(data.date) || undefined, time: text(data.time) || undefined, photos }, now);
+    const cta = ctaFromPanel(text(data.ctaMode), text(data.ctaText));
+    const post = createPhotoPost(ctx.db, ctx.env, ctx.config, { cta, type: text(data.type), note: text(data.note), kind: text(data.kind) as "carousel" | "reel", when: (["next", "date", "now"].includes(text(data.when)) ? text(data.when) : "next") as "next" | "date" | "now", date: text(data.date) || undefined, time: text(data.time) || undefined, photos }, now);
     const day = localClock(post.scheduledAt, ctx.env.TIME_ZONE).dateKey;
     return { status: 200, body: { ok: true, postId: post.id, redirect: `/?mes=${day.slice(0, 7)}&dia=${day}` } };
   } catch (error) {
@@ -513,7 +559,7 @@ ${query.get("erro") ? `<section class="card error" role="alert">${esc(query.get(
 <h2>Calendário</h2>
 ${upcoming.length === 0 ? '<p class="empty">Os próximos dias ainda não foram planejados. Com o sistema ligado, isso acontece em alguns minutos.</p>' : ""}
 ${calendar(ctx, query, now)}
-</main></body></html>`;
+</main>${CTA_SCRIPT}</body></html>`;
 }
 
 export function startPanel(ctx: PanelContext, host = "127.0.0.1"): Promise<Server> {
