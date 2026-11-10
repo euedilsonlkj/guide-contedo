@@ -52,6 +52,17 @@ Todo post fecha com a chamada nas duas opções: **WhatsApp (11) 97473-9209 ou O
 Direct**. Sem travessão, sem preço, sem prazo, sem porcentagem, sem garantia, sem link, sem
 inventar obra ou cliente; fatos sobre a Guide só os de `facts`.
 
+## Identidade visual da Guide
+
+As artes da Guide usam o estilo **obra** (`brand.style` no config), diferente do Vexa: títulos em
+Archivo condensada e caixa alta, cantos retos, linha laranja fina ao lado da marca, moldura fina
+em volta do slide (como um caixilho) e foto em primeiro lugar. A paleta continua preto, branco e
+laranja.
+
+Com `brand.coverFromPhotos: true`, a capa dos carrosséis do plano usa as fotos de obra da pasta
+`content/fotos`, sempre a menos usada até agora. O Gemini só entra se a pasta estiver vazia.
+Quanto mais fotos boas de obra nessa pasta, mais variadas ficam as capas.
+
 ## Conteúdo com as suas fotos
 
 No painel, **+ Novo conteúdo com fotos**:

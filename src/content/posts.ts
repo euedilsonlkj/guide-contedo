@@ -209,6 +209,17 @@ export async function runContentPlan(db: Executor, env: Env, config: BusinessCon
 
 // ---------------------------------------------------------------- write
 
+/** The job photo of content/fotos used the fewest times as a cover so far (ties: by name). */
+function leastUsedPhoto(db: Executor, env: Env, account: string): string | null {
+  const photos = ownerPhotos(env).map((file) => relativeToRoot(env, file));
+  if (photos.length === 0) return null;
+  const used = new Map(photos.map((photo) => [photo, 0]));
+  for (const row of db.select({ media: contentPosts.media }).from(contentPosts).where(eq(contentPosts.account, account)).all()) {
+    for (const file of [row.media?.image, row.media?.photo]) if (file && used.has(file)) used.set(file, (used.get(file) ?? 0) + 1);
+  }
+  return [...used.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))[0][0];
+}
+
 function choosePhoto(env: Env, post: ContentPost): string | null {
   const photos = ownerPhotos(env);
   if (photos.length === 0) return null;
@@ -232,6 +243,10 @@ export async function runContentWrite(db: Executor, env: Env, config: BusinessCo
     const written = await writePostScript(db, env, content, post, pillar, recent, episodes);
     const media: ContentMedia = { ...post.media };
     if (written.kind === "carousel" && pillar.usesOwnerPhoto) media.photo = choosePhoto(env, post);
+    else if (written.kind === "carousel" && content.brand.coverFromPhotos) {
+      const photo = leastUsedPhoto(db, env, content.account);
+      if (photo) media.image = photo;
+    }
     if (written.kind === "reel") {
       media.clips = written.script.scenes.map(() => null);
       const portrait = seriesPortrait(env);

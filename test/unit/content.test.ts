@@ -86,6 +86,8 @@ describe("content text guard", () => {
       const config = getConfig();
       expect(config.brand.wordmark).toBe("GUIDE");
       expect(config.brand.ctaBadge).toContain("97473-9209");
+      expect(config.brand.style).toBe("obra");
+      expect(config.brand.coverFromPhotos).toBe(true);
       expect(config.quoteSignature).toBe("Guide Vidro e Alumínio");
       expect(config.forbiddenTerms.every((term) => new RegExp(term.pattern, "i") instanceof RegExp)).toBe(true);
     } finally {

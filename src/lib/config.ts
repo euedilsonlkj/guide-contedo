@@ -169,6 +169,16 @@ const contentSchema = z
         wordmark: z.string().min(1),
         /** Badge of the last slide and the end of the Reel (empty: "Chama no Direct @handle"). */
         ctaBadge: z.string().default(""),
+        /**
+         * Look of the slides. "vexa": Montserrat, rounded, orange glow. "obra": Archivo condensed in
+         * capitals, square corners, thin frame lines, photo first (the Guide's identity).
+         */
+        style: z.enum(["vexa", "obra"]).default("vexa"),
+        /**
+         * Carousel covers use the operator's job photos (content/fotos), the least used first,
+         * instead of a Gemini image. Gemini is used only when the folder is empty.
+         */
+        coverFromPhotos: z.boolean().default(false),
       }),
     /** Visual direction for the Gemini images and clips (style, light, setting). */
     imageStyle: z.string().min(1),

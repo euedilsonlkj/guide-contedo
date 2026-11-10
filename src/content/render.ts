@@ -8,7 +8,7 @@ import type { CarouselScript, PhotoCarouselScript, PhotoSlide, Slide } from "./a
 import type { ContentConfig } from "./schedule";
 
 /**
- * Draws the posts: every slide is an HTML page in the brand (Montserrat, black and orange),
+ * Draws the posts: every slide is an HTML page in the brand (style vexa or obra, see the config),
  * rendered by an invisible Chrome. The AI never writes inside an image, so the text is always
  * spelled right; Gemini only supplies the background photo of the cover and the video clips.
  */
@@ -18,19 +18,48 @@ export const STORY = { width: 1080, height: 1920 };
 
 type Brand = ContentConfig["brand"];
 
-let fontCss: string | null = null;
+const fontCss = new Map<string, string>();
 
-function montserrat(): string {
-  if (fontCss !== null) return fontCss;
+/** The font of a style, embedded (the slides are drawn offline). */
+function fontFace(family: "Montserrat" | "Archivo"): string {
+  const cached = fontCss.get(family);
+  if (cached !== undefined) return cached;
+  let css = "";
   try {
     const require = createRequire(path.join(process.cwd(), "package.json"));
-    const file = require.resolve("@fontsource-variable/montserrat/files/montserrat-latin-wght-normal.woff2");
+    const file =
+      family === "Archivo"
+        ? require.resolve("@fontsource-variable/archivo/files/archivo-latin-standard-normal.woff2")
+        : require.resolve("@fontsource-variable/montserrat/files/montserrat-latin-wght-normal.woff2");
     const data = readFileSync(file).toString("base64");
-    fontCss = `@font-face{font-family:"Montserrat";font-style:normal;font-weight:100 900;font-display:block;src:url(data:font/woff2;base64,${data}) format("woff2");}`;
+    css = `@font-face{font-family:"${family}";font-style:normal;font-weight:100 900;${family === "Archivo" ? "font-stretch:62% 125%;" : ""}font-display:block;src:url(data:font/woff2;base64,${data}) format("woff2");}`;
   } catch {
-    fontCss = "";
+    css = "";
   }
-  return fontCss;
+  fontCss.set(family, css);
+  return css;
+}
+
+/**
+ * The "obra" look (Guide): Archivo condensed in capitals for titles, square corners everywhere,
+ * no glow, a thin frame like a window around the slide. It reshapes the same slides by CSS.
+ */
+function obraCss(brand: Brand): string {
+  return `
+body{font-family:"Archivo",Arial,sans-serif}
+h1,h2{font-family:"Archivo",Arial,sans-serif;text-transform:uppercase;font-stretch:78%;font-weight:800 !important;letter-spacing:-.005em !important;line-height:.98 !important}
+[style*="border-radius"]{border-radius:0 !important}
+.glow,.grid{display:none}
+.top{letter-spacing:.32em;font-weight:800;font-size:24px}
+.top .dot{border-radius:0;width:14px;height:14px}
+.top .mark::after{content:"";display:block;width:90px;height:2px;background:${brand.accent};margin-left:10px}
+.bar{border-radius:0;width:96px;height:6px}
+.foot{letter-spacing:.06em;text-transform:uppercase;font-size:22px}
+.slide::after{content:"";position:absolute;inset:34px;border:2px solid ${brand.text}1f;pointer-events:none}`;
+}
+
+function styleOf(brand: Brand): "vexa" | "obra" {
+  return brand.style ?? "vexa";
 }
 
 export function escapeHtml(text: string): string {
@@ -67,7 +96,7 @@ document.body.dataset.ready = '1';
 
 function page(brand: Brand, size: { width: number; height: number }, body: string, transparent = false): string {
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><style>
-${montserrat()}
+${fontFace(styleOf(brand) === "obra" ? "Archivo" : "Montserrat")}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${size.width}px;height:${size.height}px;overflow:hidden}
 body{font-family:"Montserrat",Arial,sans-serif;background:${transparent ? "transparent" : brand.background};color:${brand.text};-webkit-font-smoothing:antialiased}
@@ -82,6 +111,7 @@ body{font-family:"Montserrat",Arial,sans-serif;background:${transparent ? "trans
 .foot .swipe{color:${brand.accent};font-weight:800}
 .accent{color:${brand.accent}}
 .bar{width:120px;height:10px;border-radius:6px;background:${brand.accent};margin-bottom:40px}
+${styleOf(brand) === "obra" ? obraCss(brand) : ""}
 </style></head><body>${body}<script>${FIT_SCRIPT}</script></body></html>`;
 }
 
